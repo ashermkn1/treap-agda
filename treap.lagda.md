@@ -5,11 +5,6 @@ We will discuss the specifics of the verification in the report; for now, let's 
 We start off with some boilerplate imports and some basic utilities needed for our instance types to work (more about this in the report):
 
 ```agda
--- idk if these are needed lol
-{-# OPTIONS --rewriting #-}
-{-# OPTIONS --guardedness #-}
-{-# OPTIONS --prop #-}
-
 module Treap where
   -- relations
   open import Relation.Binary
@@ -31,10 +26,6 @@ module Treap where
   -- grab the instance value into an actual value
   it : {{x : A}} → A
   it {{x}} = x
-
-  -- not equivalent
-  _≢_ : A → A → Set
-  x ≢ y = ¬ (x ≡ y)
   
   -- allow ≤ and < on the ℕs to be automatically derivable through instances
   instance    
@@ -120,12 +111,12 @@ We make use of 3 lemmas:
     ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
                                 ; (left x∈l) → lemmaLeft l x x≤lower x∈l
                                 ; (right x∈r) → lemmaLeft r x (inj₁ x<k) x∈r }
-    ... | tri≈ ¬x<k x≡k ¬k<x = λ { (here x≡k) → [ (λ x<lower → ¬x<k (trans x<lower (lemmaOrder l))) , (λ x≡lower → ¬x<k (Eq.subst (_< k) (sym x≡lower) (lemmaOrder l)) )] x≤lower
+    ... | tri≈ ¬x<k x≡k ¬k<x = λ { (here x≡k) → ¬x<k ([ (λ x<lower → trans x<lower (lemmaOrder l)) , (λ x≡lower → Eq.subst (_< k) (sym x≡lower) (lemmaOrder l) )] x≤lower)
                                 ; (left x∈l) → lemmaLeft l x x≤lower x∈l
                                 ; (right x∈r) → lemmaLeft r x (inj₂ x≡k) x∈r }
     ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
                                 ; (left x∈l) → lemmaLeft l x x≤lower x∈l
-                                ; (right x∈r) → [ (λ x<lower → ¬x<k (trans x<lower (lemmaOrder l))) , (λ x≡lower → ¬x<k (Eq.subst (_< k) (sym x≡lower) (lemmaOrder l))) ] x≤lower}
+                                ; (right x∈r) → ¬x<k ([ (λ x<lower → trans x<lower (lemmaOrder l)) , (λ x≡lower → Eq.subst (_< k) (sym x≡lower) (lemmaOrder l)) ] x≤lower) }
     
     lemmaRight : ∀ {lower p upper} → (t : Treap lower p upper) → (x : Carrier) → (upper < x ⊎ x ≡ upper) → x ∉ t
     lemmaRight empty x x≥upper = λ ()
