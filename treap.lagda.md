@@ -176,7 +176,39 @@ Now, we can test some lookup proofs on a sample `Treap`:
     -- 0∈treap = invert (proof (lookup 0 {! treap  !}))
 ```
 
+```agda
+  module Join (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
+    open IsStrictTotalOrder IsSTO
+    open TreapBase Carrier _<_ IsSTO
 
+    priority : ∀ { lower prio upper } → Treap lower prio upper → ℕ
+    priority empty = 0
+    priority (node p k t t₁) = p
+
+    
+    treapCoerce : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
+    treapCoerce empty = empty
+    treapCoerce {p = p} (node p₁ k l r) {{pₜ≤p}} = node p k (treapCoerce l) {!   !}
+
+
+    join : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
+    join k p empty {{h}} empty = node p {{h}} k empty empty
+    join k p empty {{h}} (node p₁ {{h₁}} k₁ r r₁) with ≤-total p p₁
+    ... | inj₁ p≤p₁ = node p₁ {{h₁}} k₁ (join k p empty {{p≤p₁}} r) r₁
+    ... | inj₂ p₁≤p = node p {{h}} k empty (node p₁ {{p₁≤p}} k₁ r r₁)
+    join k p (node p₁ {{h₁}} k₁ l l₁) {{h}} empty with ≤-total p p₁
+    ... | inj₁ p≤p₁ = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} empty)
+    ... | inj₂ p₁≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) empty
+    join k p L@(node p₁ k₁ l l₁) {{h}} R@(node p₂ k₂ r r₁) with ≤-total p p₁ | ≤-total p p₂
+    ... | inj₁ p≤p₁ | inj₁ p≤p₂ = {!   !}
+    ... | inj₁ p≤p₁ | inj₂ p₂≤p = {!   !}
+    ... | inj₂ p₁≤p | inj₁ p≤p₂ = {!   !}
+    ... | inj₂ p₁≤p | inj₂ p₂≤p = 
+      let 
+        L' = {!  treapCoerce L !} 
+        R' = {!   !}
+      in node p {{h}} k L' R'
+```
 ```agda
   module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
@@ -188,7 +220,7 @@ Now, we can test some lookup proofs on a sample `Treap`:
 
     treapCoerce : ∀ { lower prio upper } → (t : Treap lower prio upper) → Treap lower (treapPrio t) upper
     treapCoerce empty = empty
-    treapCoerce (node p k t t₁) = node p {{≤-refl}} k t t₁
+    treapCoerce (node p k l r) = node p {{≤-refl}} k l r
 
     insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
     insert x p {h} empty _ = node p {{h}} x empty empty
