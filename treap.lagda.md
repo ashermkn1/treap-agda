@@ -185,12 +185,15 @@ Now, we can test some lookup proofs on a sample `Treap`:
     priority empty = 0
     priority (node p k t t₁) = p
 
+    -- priorityInv : ∀ { lower prio upper } → (t : Treap lower prio upper) → priority t ≤ prio
+    -- priorityInv empty = z≤n
+    -- priorityInv (node p {{p≤prio}} k t t₁) = p≤prio
     
     treapCoerce : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
     treapCoerce empty = empty
-    treapCoerce {p = p} (node p₁ k l r) {{pₜ≤p}} = node p k (treapCoerce l) {!   !}
+    treapCoerce {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
 
-
+    {-# TERMINATING #-}
     join : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
     join k p empty {{h}} empty = node p {{h}} k empty empty
     join k p empty {{h}} (node p₁ {{h₁}} k₁ r r₁) with ≤-total p p₁
@@ -199,28 +202,26 @@ Now, we can test some lookup proofs on a sample `Treap`:
     join k p (node p₁ {{h₁}} k₁ l l₁) {{h}} empty with ≤-total p p₁
     ... | inj₁ p≤p₁ = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} empty)
     ... | inj₂ p₁≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) empty
-    join k p L@(node p₁ k₁ l l₁) {{h}} R@(node p₂ k₂ r r₁) with ≤-total p p₁ | ≤-total p p₂
-    ... | inj₁ p≤p₁ | inj₁ p≤p₂ = {!   !}
-    ... | inj₁ p≤p₁ | inj₂ p₂≤p = {!   !}
-    ... | inj₂ p₁≤p | inj₁ p≤p₂ = {!   !}
-    ... | inj₂ p₁≤p | inj₂ p₂≤p = 
-      let 
-        L' = {!  treapCoerce L !} 
-        R' = {!   !}
-      in node p {{h}} k L' R'
+    join k p (node p₁ {{h₁}} k₁ l l₁) {{h}} (node p₂ {{h₂}} k₂ r r₁) with ≤-total p p₁ | ≤-total p p₂
+    ... | inj₂ p₁≤p | inj₂ p₂≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) (node p₂ {{p₂≤p}} k₂ r r₁)
+    ... | inj₂ p₁≤p | inj₁ p≤p₂ = node p₂ {{h₂}} k₂ (join k p (node p₁ {{≤-trans p₁≤p p≤p₂}} k₁ l l₁) {{p≤p₂}} r) r₁
+    ... | inj₁ p≤p₁ | inj₂ p₂≤p = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} (node p₂ {{≤-trans p₂≤p p≤p₁}} k₂ r r₁))
+    ... | inj₁ p≤p₁ | inj₁ p≤p₂ with ≤-total p₁ p₂
+    ... | inj₁ p₁≤p₂ = node p₂ {{h₂}} k₂ (join k p (node p₁ {{p₁≤p₂}} k₁ l l₁) {{p≤p₂}} r) r₁
+    ... | inj₂ p₂≤p₁ = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} (node p₂ {{p₂≤p₁}} k₂ r r₁))
 ```
 ```agda
   module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
     open TreapBase Carrier _<_ IsSTO
 
-    treapPrio : ∀ { lower prio upper } → (t : Treap lower prio upper) → ℕ
-    treapPrio empty = 0
-    treapPrio (node p _ _ _) = p
+    -- treapPrio : ∀ { lower prio upper } → (t : Treap lower prio upper) → ℕ
+    -- treapPrio empty = 0
+    -- treapPrio (node p _ _ _) = p
 
-    treapCoerce : ∀ { lower prio upper } → (t : Treap lower prio upper) → Treap lower (treapPrio t) upper
-    treapCoerce empty = empty
-    treapCoerce (node p k l r) = node p {{≤-refl}} k l r
+    -- treapCoerce : ∀ { lower prio upper } → (t : Treap lower prio upper) → Treap lower (treapPrio t) upper
+    -- treapCoerce empty = empty
+    -- treapCoerce (node p k l r) = node p {{≤-refl}} k l r
 
     insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
     insert x p {h} empty _ = node p {{h}} x empty empty
