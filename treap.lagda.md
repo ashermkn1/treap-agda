@@ -4,25 +4,20 @@
 {-# OPTIONS --prop #-}
 
 open import Level using () renaming (zero to lzero)
-open import Relation.Binary.Bundles using (DecTotalOrder)
+open import Relation.Binary
 
 module treap where
 
 
-open import Data.Nat.Base using (ℕ; zero; suc; _⊓_) hiding (module ℕ)
-module ℕ where
-  open import Data.Nat.Base public
-  open import Data.Nat.Properties public
-
-open import Data.Integer.Base using (ℤ) hiding (module ℤ)
-module ℤ where
-  open import Data.Integer.Base public
-  open import Data.Integer.Properties public
+open import Data.Nat hiding (compare)
+open import Data.Nat.Properties
+open import Data.Product
+open import Data.Sum
 
 open import Data.Maybe using (Maybe; nothing; just) renaming (map to mapMaybe)
-open import Agda.Builtin.Bool public
-open import Agda.Builtin.Nat
-open import Relation.Binary.PropositionalEquality as Eq using (_≡_)
+open import Agda.Builtin.Bool 
+open import Relation.Binary.PropositionalEquality as Eq using (_≡_ ; sym)
+open import Relation.Nullary
 import Calf
 
 variable
@@ -33,148 +28,88 @@ variable
 it : {{x : A}} → A
 it {{x}} = x
 
-record ⊤ : Set where
-  constructor tt
-data ⊥ : Set where
-module ℕ-≤ where
-  data _≤_ : ℕ → ℕ → Set where
-    ≤-zero : zero ≤ n
-    ≤-suc : m ≤ n → suc m ≤ suc n
+open import Data.Unit using (⊤)
+open import Data.Empty using (⊥)
 
-  ≤-refl : n ≤ n
-  ≤-refl {n = zero} = ≤-zero
-  ≤-refl {n = suc k} = ≤-suc ≤-refl
+_≢_ : A → A → Set
+x ≢ y = ¬(x ≡ y)
+So : Bool → Set
+So false = ⊥
+So true = ⊤
 
-  ≤-trans : k ≤ l → l ≤ m → k ≤ m
-  ≤-trans ≤-zero l≤m = ≤-zero
-  ≤-trans (≤-suc k≤l) (≤-suc l≤m) = ≤-suc (≤-trans k≤l l≤m)
+instance    
+  ≤-dec : {p : So (m <ᵇ suc n)} → m ≤ n
+  ≤-dec {m = zero} {n = n} = z≤n
+  ≤-dec {m = suc m} {n = suc n} {p = p} = s≤s (≤-dec {p = p})
 
-  ≤-antisym : k ≤ l → l ≤ k → k ≡ l
-  ≤-antisym ≤-zero ≤-zero = Eq.refl
-  ≤-antisym (≤-suc k≤l) (≤-suc l≤k) = Eq.cong suc (≤-antisym k≤l l≤k)
-
-  So : Bool → Set
-  So false = ⊥
-  So true = ⊤
-
-  instance    
-    ≤-dec : {p : So (m < suc n)} → m ≤ n
-    ≤-dec {m = zero} {n = n} = ≤-zero
-    ≤-dec {m = suc m} {n = suc n} {p = p} = ≤-suc (≤-dec {p = p})
-
-record Ord (A : Set) : Set₁ where
-  field
-    _≤_ : A → A → Set
-    
-    ≤-refl : x ≤ x
-    ≤-trans : x ≤ y → y ≤ z → x ≤ z
-    ≤-antisym : x ≤ y → y ≤ x → x ≡ y
-
-  _≥_ : A → A → Set
-  x ≥ y = y ≤ x
-
-open Ord {{...}} 
-
-instance
-  Ord-ℕ : Ord ℕ
-  _≤_ {{Ord-ℕ}} = ℕ-≤._≤_
-  ≤-refl {{Ord-ℕ}} = ℕ-≤.≤-refl
-  ≤-trans {{Ord-ℕ}} = ℕ-≤.≤-trans
-  ≤-antisym {{Ord-ℕ}} = ℕ-≤.≤-antisym
-
-  Ord-ℤ : Ord ℤ
-  _≤_ {{Ord-ℤ}} = ℤ._≤_
-  ≤-refl {{Ord-ℤ}} = ℤ.≤-refl
-  ≤-trans {{Ord-ℤ}} = ℤ.≤-trans
-  ≤-antisym {{Ord-ℤ}} = ℤ.≤-antisym
-
-data Tri {{_ : Ord A}} : A → A → Set where
-  less    : {{ x≤y : x ≤ y }} → Tri x y
-  equal   : {{x≡y : x ≡ y}} → Tri x y
-  greater : {{ x≥y : x ≥ y }} → Tri x y
-
-record TDO (A : Set) : Set₁ where
-  field
-    {{Ord-A}} : Ord A
-    tri : (x y : A) → Tri x y
-
-open TDO {{...}} public
-
-triNat : (x y : ℕ) → Tri x y
-triNat zero zero = equal
-triNat zero (suc y) = less
-triNat (suc x) zero = greater
-triNat (suc x) (suc y) with triNat x y
-... | less  {{x≤y}} = less {{x≤y = ℕ-≤.≤-suc x≤y}}
-... | equal {{x≡y}} = equal {{x≡y = Eq.cong ℕ.suc x≡y}}
-... | greater {{x≥y}} = greater {{x≥y = ℕ-≤.≤-suc x≥y}}
-
--- triℤ : (x y : ℤ) → Tri x y
--- triℤ (ℤ.+_ zero) (ℤ.+_ zero) = equal
--- triℤ (ℤ.+_ zero) (ℤ.+_ (suc n₁)) = {! less  !}
--- triℤ (ℤ.+_ (suc n)) (ℤ.+_ n₁) = {!   !}
--- triℤ (ℤ.+_ n) (ℤ.-[1+_] n₁) = {!   !}
--- triℤ (ℤ.-[1+_] n) y = {!   !}
-instance
-  TDO-Nat : TDO ℕ
-  Ord-A {{TDO-Nat}} = Ord-ℕ
-  tri {{TDO-Nat}} = triNat
-
-data Tree : Set where
-  Empty : Tree
-  Node : (l : Tree) → (k : ℕ) → (p : ℤ) → (r : Tree) → Tree
-
-data [_]∞ (A : Set) : Set where
-  -∞ : [ A ]∞
-  [_] : A → [ A ]∞
-  +∞ : [ A ]∞
-
-module Ord-[]∞ {A : Set} {{ A-≤ : Ord A }} where 
-  data _≤∞_ : [ A ]∞ → [ A ]∞ → Set where
-    -∞-≤ : -∞ ≤∞ y
-    []-≤ : x ≤ y → [ x ] ≤∞ [ y ]
-    +∞-≤ : x ≤∞ +∞
-
-  []∞-refl : x ≤∞ x
-  []∞-refl {x = -∞} = -∞-≤
-  []∞-refl {x = [ x ]} = []-≤ (≤-refl {A = A})
-  []∞-refl {x = +∞} = +∞-≤
-
-  []∞-trans : x ≤∞ y → y ≤∞ z → x ≤∞ z
-  []∞-trans -∞-≤ _ = -∞-≤
-  []∞-trans ([]-≤ x≤y) ([]-≤ y≤z) = []-≤ (≤-trans {A = A} x≤y y≤z)
-  []∞-trans _ +∞-≤ = +∞-≤
-
-  []∞-antisym : x ≤∞ y → y ≤∞ x → x ≡ y
-  []∞-antisym -∞-≤ -∞-≤ = Eq.refl
-  []∞-antisym ([]-≤ x≤y) ([]-≤ y≤x) = Eq.cong [_] (≤-antisym {A = A} x≤y y≤x)
-  []∞-antisym +∞-≤ +∞-≤ = Eq.refl
-
-  instance
-    Ord-[]∞ : {{_ : Ord A}} → Ord [ A ]∞
-    _≤_ {{Ord-[]∞}} = _≤∞_
-    ≤-refl {{Ord-[]∞}} = []∞-refl
-    ≤-trans {{Ord-[]∞}} = []∞-trans
-    ≤-antisym {{Ord-[]∞}} = []∞-antisym
-    
-open Ord-[]∞ public
+instance    
+  <-dec : {p : So (m <ᵇ n)} → m < n
+  <-dec {m = zero} {n = suc n} = s≤s z≤n
+  <-dec {m = suc m} {n = suc n} {p} = s≤s (<-dec {p = p})
 
 
 
-module _ {{_ : Ord A}} where
-  instance
-    -∞-≤-I : {y : [ A ]∞} → -∞ ≤ y
-    -∞-≤-I = -∞-≤
 
-    +∞-≤-I : {x : A} → [ x ] ≤ +∞
-    +∞-≤-I = +∞-≤
 
-    []-≤-I : {x y : A} {{x≤y : x ≤ y}} → [ x ] ≤ [ y ]
-    []-≤-I {{x≤y = x≤y}} = []-≤ x≤y
+module TreapModule (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
+  open IsStrictTotalOrder IsSTO
 
-data Treap (A : Set) {{_ : Ord A}} (lower : [ A ]∞) (prio : [ ℕ ]∞) (upper : [ A ]∞) : Set where
-  empty : {{ lower ≤ upper }} → Treap A lower prio upper
-  node : (p : ℕ) → {{[ p ]  ≤ prio}} → (k : A) → Treap A lower [ p ] [ k ] → Treap A [ k ] [ p ] upper → Treap A lower prio upper
+  data Treap (lower : Carrier) (prio : ℕ) (upper : Carrier) : Set where
+    empty : {{lower < upper }} → Treap lower prio upper
+    node : (p : ℕ) → {{p ≤ prio}} → (k : Carrier) → Treap lower p k → Treap k p upper → Treap lower prio upper
+
+  
+  data _∈_ {lower} {p : ℕ} {upper} (x : Carrier) : (t : Treap lower p upper) → Set where
+    here : ∀ {p' h l r} → x ≡ y  → x ∈ node p' {{h}} y l r
+    left : ∀ {p' h l r} → x ∈ l → x ∈ node p' {{h}} y l r
+    right : ∀ {p' h l r} → x ∈ r → x ∈ node p' {{h}} y l r
+
+  -- _tri∈_ : Tri 
+  _∉_ : ∀ {lower} {p : ℕ} {upper} (x : Carrier) (t : Treap lower p upper) → Set
+  x ∉ t = ¬ (x ∈ t)
+
+  lemmaOrder : ∀ { lower p upper } → (t : Treap lower p upper) → lower < upper
+  lemmaOrder empty = it
+  lemmaOrder (node p k l r) = trans (lemmaOrder l) (lemmaOrder r)
+
+  lemmaLeft : ∀ {lower p upper} → (t : Treap lower p upper) → (x : Carrier) → (x < lower ⊎ x ≡ lower) → x ∉ t
+  lemmaLeft empty x x≤lower = λ ()
+  lemmaLeft (node p k l r) x x≤lower with compare x k
+  ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
+                               ; (left x∈l) → lemmaLeft l x x≤lower x∈l
+                               ; (right x∈r) → lemmaLeft r x (inj₁ x<k) x∈r }
+  ... | tri≈ ¬x<k x≡k ¬k<x = λ { (here x≡k) → [ (λ x<lower → ¬x<k (trans x<lower (lemmaOrder l))) , (λ x≡lower → ¬x<k (Eq.subst (_< k) (sym x≡lower) (lemmaOrder l)) )] x≤lower
+                               ; (left x∈l) → lemmaLeft l x x≤lower x∈l
+                               ; (right x∈r) → lemmaLeft r x (inj₂ x≡k) x∈r }
+  ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
+                               ; (left x∈l) → lemmaLeft l x x≤lower x∈l
+                               ; (right x∈r) → [ (λ x<lower → ¬x<k (trans x<lower (lemmaOrder l))) , (λ x≡lower → ¬x<k (Eq.subst (_< k) (sym x≡lower) (lemmaOrder l))) ] x≤lower}
+  
+  lemmaRight : ∀ {lower p upper} → (t : Treap lower p upper) → (x : Carrier) → (upper < x ⊎ x ≡ upper) → x ∉ t
+  lemmaRight empty x x≥upper = λ ()
+  lemmaRight (node p k l r) x x≥upper with compare x k
+  ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
+                               ; (left x∈l) → lemmaRight l x ([ (λ upper<x → inj₁ (trans (lemmaOrder r) upper<x)) , (λ x≡upper → inj₁ (Eq.subst (k <_) (sym x≡upper) (lemmaOrder r))) ] x≥upper) x∈l
+                               ; (right x∈r) → lemmaRight r x x≥upper x∈r }
+  ... | tri≈ ¬x<k x≡k ¬k<x = λ _ → ¬k<x ([ trans (lemmaOrder r) , (λ x≡upper → Eq.subst (k <_) (sym x≡upper) (lemmaOrder r)) ] x≥upper)
+  ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
+                               ; (left x∈l) → lemmaRight l x (inj₁ k<x) x∈l
+                               ; (right x∈r) → lemmaRight r x x≥upper x∈r }
+  
+  lookup : ∀ { lower p upper } → (x : Carrier) → (t : Treap lower p upper) → Dec (x ∈ t)
+  lookup x empty = no (λ ())
+  lookup x (node p k l r) with compare x k
+  lookup x (node p k l r) | tri≈ _ x≡k _ = yes (here x≡k)
+  lookup x (node p k l r) | tri< x<k ¬x≡k ¬k<x with lookup x l
+  ... | no x∉l = no (λ { (here x≡k) → ¬x≡k x≡k
+                       ; (left x∈l) → x∉l x∈l
+                       ; (right x∈r) → lemmaLeft r x (inj₁ x<k) x∈r })
+  ... | yes x∈l = yes (left x∈l)
+  lookup x (node p k l r) | tri> ¬x<k ¬x≡k k<x with lookup x r
+  ... | no x∉r = no (λ { (here x≡k) → ¬x≡k x≡k
+                       ; (left x∈l) → lemmaRight l x (inj₁ k<x) x∈l
+                       ; (right x∈r) → x∉r x∈r })
+  ... | yes x∈r = yes (right x∈r)
 ```
 
 
@@ -182,14 +117,21 @@ Let's test the `Treap` module:
 
 ```agda
 
-_ : Treap ℕ -∞ -∞ +∞
-_ = empty
+module _ where
+  open TreapModule ℕ _<_ <-isStrictTotalOrder
 
-_ : Treap ℕ -∞ [ 0 ] +∞
-_ = node 0 0 empty empty
+  ΣTreap : ℕ → Set
+  ΣTreap prio = ∃[ lower ] ∃[ upper ] Treap lower prio upper
 
-_ : Treap ℕ -∞ ([ 15 ]) +∞
-_ = node 15 42 (node 3 6 empty empty) (node 2 9000 empty empty)
+  _ : ΣTreap 10
+  _ = 0 , 1 , empty
+
+  _ : ΣTreap 10
+  _ = 0 , 2 , node 0 1 empty empty
+
+  _ : ΣTreap 15
+  _ = 0 , 9001 , node 15 42 (node 3 6 empty empty) (node 2 9000 empty empty)
+
 ```
 
  
@@ -197,19 +139,10 @@ _ = node 15 42 (node 3 6 empty empty) (node 2 9000 empty empty)
 
 ```agda
 
-module Lookup {{_ : TDO A}} where
-  data _∈_ {lower} {p : ℕ} {upper} (x : A) : (t : Treap A lower [ p ] upper) → Set where
-    here : ∀ {t₁ t₂} → x ≡ y → x ∈ node p y t₁ t₂
-    left : ∀ {t₁ t₂} → x ∈ t₁ → x ∈ node p y t₁ t₂
-    right : ∀ {t₁ t₂} → x ∈ t₂ → x ∈ node p y t₁ t₂
+-- module Lookup {{STO : StrictTotalOrder lzero lzero lzero}} where
+--   open StrictTotalOrder STO
 
-  lookup : ∀ { lower p upper } → (x : A) → (t : Treap A lower [ p ] upper) → Maybe (x ∈ t)
-  lookup x empty = nothing
-  lookup x (node p y l r) with tri x y
-  ... | less = mapMaybe left (lookup x l)
-  ... | equal = just (here it)
-  ... | greater = mapMaybe right (lookup x r)
 
+          
   
-
-```
+```       
