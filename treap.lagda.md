@@ -182,13 +182,20 @@ Now, we can test some lookup proofs on a sample `Treap`:
     open IsStrictTotalOrder IsSTO
     open TreapBase Carrier _<_ IsSTO
 
-    
+    treapPrio : ∀ { lower prio upper } → (t : Treap lower prio upper) → ℕ
+    treapPrio empty = 0
+    treapPrio (node p _ _ _) = p
+
+    treapCoerce : ∀ { lower prio upper } → (t : Treap lower prio upper) → Treap lower (treapPrio t) upper
+    treapCoerce empty = empty
+    treapCoerce (node p k t t₁) = node p {{≤-refl}} k t t₁
+
     insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
     insert x p {h} empty _ = node p {{h}} x empty empty
     insert x p (node p₁ k l r) x∉t with compare x k
     insert x p (node p₁ k l r) x∉t | tri≈ ¬x<k x≡k ¬k<x = ⊥-elim (x∉t (here x≡k))
     ... | tri< x<k ¬x≡k ¬k<x with p <ᵇ p₁
-    ... | false = node p x {!   !} {!   !}
+    ... | false = {!   !}
     ... | true = {!   !}
     insert x p (node p₁ k l r) x∉t | tri> ¬x<k ¬x≡k k<x = {!   !}
 ``` 
