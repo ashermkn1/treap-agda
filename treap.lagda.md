@@ -176,7 +176,6 @@ Now, we can test some lookup proofs on a sample `Treap`:
     -- 0∈treap = invert (proof (lookup 0 {! treap  !}))
 ```
 
-
 ```agda
   module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
@@ -190,12 +189,14 @@ Now, we can test some lookup proofs on a sample `Treap`:
     treapCoerce empty = empty
     treapCoerce (node p k t t₁) = node p {{≤-refl}} k t t₁
 
-    insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
-    insert x p {h} empty _ = node p {{h}} x empty empty
+    insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → {{ p≤prio : p ≤ prio }}  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
+    insert x p {{p≤prio}} empty _ = node p {{p≤prio}} x empty empty
     insert x p (node p₁ k l r) x∉t with compare x k
     insert x p (node p₁ k l r) x∉t | tri≈ ¬x<k x≡k ¬k<x = ⊥-elim (x∉t (here x≡k))
-    ... | tri< x<k ¬x≡k ¬k<x with p <ᵇ p₁
-    ... | false = {!   !}
-    ... | true = {!   !}
+    insert x p {{p≤prio}} (node p₁ {{p₁≤prio}} k l r) x∉t | tri< x<k ¬x≡k ¬k<x with p ≤? p₁
+    ... | yes p≤p₁ = node p₁ {{p₁≤prio}} k (insert x p {{p≤p₁}} l {{it}} {{x<k}} λ x∈l → x∉t (left x∈l)) r
+    ... | no ¬p≤p₁ = node p {{p≤prio}} x {!   !} {!   !}
+    -- ... | true = node p₁ {{p₁≤prio}} k (insert x p l {{it}} {{x<k}} {!   !}) {!   !}
+    -- ... | false = {!   !}
     insert x p (node p₁ k l r) x∉t | tri> ¬x<k ¬x≡k k<x = {!   !}
-``` 
+```
