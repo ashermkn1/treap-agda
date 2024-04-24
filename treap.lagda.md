@@ -17,7 +17,7 @@ module Treap where
   open import Data.Nat hiding (compare)
   open import Data.Nat.Properties
   open import Data.Unit using (⊤ ; tt)
-  open import Data.Empty using (⊥)
+  open import Data.Empty using (⊥ ; ⊥-elim)
   open import Agda.Builtin.Bool 
   open import Data.Bool.Base using (T)
 
@@ -175,3 +175,20 @@ Now, we can test some lookup proofs on a sample `Treap`:
     -- 0∈treap : 0 ∈ treap
     -- 0∈treap = invert (proof (lookup 0 {! treap  !}))
 ```
+
+
+```agda
+  module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
+    open IsStrictTotalOrder IsSTO
+    open TreapBase Carrier _<_ IsSTO
+
+    
+    insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
+    insert x p {h} empty _ = node p {{h}} x empty empty
+    insert x p (node p₁ k l r) x∉t with compare x k
+    insert x p (node p₁ k l r) x∉t | tri≈ ¬x<k x≡k ¬k<x = ⊥-elim (x∉t (here x≡k))
+    ... | tri< x<k ¬x≡k ¬k<x with p <ᵇ p₁
+    ... | false = node p x {!   !} {!   !}
+    ... | true = {!   !}
+    insert x p (node p₁ k l r) x∉t | tri> ¬x<k ¬x≡k k<x = {!   !}
+``` 
