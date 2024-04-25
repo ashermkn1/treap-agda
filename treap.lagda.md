@@ -1,17 +1,17 @@
-In this file, we are providing an implementation of the `Treap` data structure (as detailed in 15-210) with packaged proofs that the ordering and priority invariants are met.
-At a high level, a `Treap` can either be `empty` or a `node` constructor that contains a key, priority, and two child trees.
-`Treap`s are an extension of BSTs with priorities for each key, with the additional invariant that the priorities of child nodes must be less than or equal to the current priority.
-When priorities are assigned to keys at random, it can be proven that the height of the tree is logarithmic in the number of nodes with high probability, and all of the standard tree complexities can then be derived in expectation.
+# Introduction
 
-Here, we provide a verified implementation of the `Treap` datatype, along with verified implementations of several primitive operations.
-Specifically, we have implemented `lookup`, `_∈_`, `join`, `split`, `insert`, and `delete` --- all with some level of correctness proofs.
+In this file, we are providing an implementation of the `Treap` data structure (as detailed in 15-210) with packaged proofs that the ordering and priority invariants are met. At a high level, a `Treap` can either be `empty` or a `node` constructor that contains a key, priority, and two child trees. `Treap`s are an extension of BSTs with priorities for each key, with the additional invariant that the priorities of child nodes must be less than or equal to the current priority. When priorities are assigned to keys at random, it can be proven that the height of the tree is logarithmic in the number of nodes with high probability, and all of the standard tree complexities can then be derived in expectation.
 
-We start off with some boilerplate imports and some basic utilities needed for our instance types to work (more about this in the report):
+Here, we provide a verified implementation of the `Treap` datatype, along with verified implementations of several primitive operations. Specifically, we have implemented `lookup`, `_∈_`, `join`, `split`, `insert`, and `delete` – all with some notion of correctness defined. Let's get started on this journey!
+
+# Implementation and Discussion
+
+We start off with some boilerplate imports and some basic utilities for instance arguments. One thing to note is the heavy use of the standard library. We had initially defined many of these constructs ourselves, as we didn't really know how to parse the standard library. Fortunately, Harrison helped us get over some of that initial learning curve, and we were able to get way more familiar with Agda and make our implementation quite generic. Mainly, we depend on built-in notions of equivalence, strict total ordering, natural numbers, and negation types (among many other things).
 
 ```agda
 module Treap where
   -- relations
-  open import Relation.Binary hiding (_⇔_)
+  open import Relation.Binary
   open import Relation.Nullary
   open import Relation.Binary.PropositionalEquality as Eq using (_≡_ ; sym)
   
@@ -24,9 +24,6 @@ module Treap where
   open import Data.Empty using (⊥ ; ⊥-elim)
   open import Agda.Builtin.Bool 
   open import Data.Bool.Base using (T)
-  open import Function.Base using (_∘_)
-  open import Function.Bundles
-  open import Function.Properties.Equivalence using (⇔⇒⟶ ; ⇔⇒⟵)
   
   variable A : Set
 
@@ -45,8 +42,9 @@ module Treap where
     <-dec {m = suc m} {n = suc n} {p} = s≤s (<-dec {p = p})
 ```
 
+We will talk more about why we used instance arguments in a bit, but for now, all we need to know is that they have a separate process for typechecking that allows things to be automatically derived (at the expense of compilation times). Here, we just define some global utilities that we can use to automatically derive many inequalities, and the `it` function to reify an instance into a real value.
+
 Now, we are good to go for implementing `Treap`s!
-We define our structure where the keys are an abstract `Carrier` type that supports a strict total ordering based on equality (≡) and a given ordering function (<):
 
 ```agda
   module TreapBase (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -55,7 +53,17 @@ We define our structure where the keys are an abstract `Carrier` type that suppo
     data Treap (lower : Carrier) (prio : ℕ) (upper : Carrier) : Set where
       empty : {{lower < upper}} → Treap lower prio upper
       node  : (p : ℕ) → {{p ≤ prio}} → (k : Carrier) → Treap lower p k → Treap k p upper → Treap lower prio upper
-    
+```
+
+We define `Treap`s to be built on an abstract `Carrier` type that supports a strict total ordering based on equality (≡) and a given ordering function (<). The `Treap` datatype itself is parametrized by exclusive `lower` and `upper` bounds on the keys, and an inclusive upper bound on the `prio`rity of the `Treap`. At a basic level, the constructors represent the two cases of the structure described before; but there is a lot of interesting stuff going on here to discuss.
+
+First, the `empty` constructor comes packaged with an instance argument (more on this in a bit) that the `lower` bound is strictly less than the `upper` bound. Thinking through the implications of this inductively, it turns out that this is all you need to enforce that keys in a `Treap` are unique! The `node` constructor comes packaged with an instance proof that its priority is less than or equal to the intended priority of the type, and contains 2 children whose upper/lower bounds  respectively are correct for the ordering invariant and whose priorities meet the priority invariant.
+
+Now let's talk about why we chose to use instance arguments at all, instead of the more typical implicit (or even explicit) arguments for the invariant proofs. Full transparency: a big reason was that the main resource we used as inspiration for this implementation relied heavily on them to get rid of a lot of boilerplate code. And they are very useful for that; in our test cases, essentially every invariant proof is automatically derived by Agda, letting us represent data structures very cleanly! We also later realized a benefit of using instances throughout the various pieces of our implementation was that simply having a `Treap` argument gave us proofs of its invariants, so we often got proofs for free without even thinking about it! In some cases, instances broke down because it couldn't choose between 2 potential proofs; but then, they became no different than regular implicit arguments. Overall, we are very happy that we got to learn about this cool feature and explore some of its pros and cons while writing (and rewriting) real code.
+
+We also define a lot of basic utilities and lemmas on `Treap`s that will be used pretty often in the rest of our code. Specifically, we need ways to loosen the type of a `Treap` based on what it actually contains, as well as ways to extract invariant information:
+
+```agda
     variable
       k : Carrier
       p prio : ℕ
@@ -97,7 +105,7 @@ We define our structure where the keys are an abstract `Carrier` type that suppo
     lemmaOrder (node p k l r) = trans (lemmaOrder l) (lemmaOrder r)
 ```
 
-We also define a notion of "is in", and some corresponding lemmas for `Treap`s:
+We also define a notion of when a key "is in" a `Treap`, and some corresponding lemmas. We chose to represent a proof of containment as outlining the path to follow in a tree to get to the element.
 
 ```agda 
     data _∈_ {lower p upper} (x : Carrier) : (t : Treap lower p upper) → Set where
@@ -146,7 +154,7 @@ We also define a notion of "is in", and some corresponding lemmas for `Treap`s:
                                 ; (right x∈r) → lemmaRight r x x≥upper x∈r }
 ```
 
-And that's it! To show off the power of our cool new ✨ verified ✨ data structure, let's write some tests to show off its power:
+And that's all the basics! To show off the power of our cool new ✨ verified ✨ data structure, let's write some tests to show off its automatic-invariant-proving power:
 
 ```agda
   module _ where
@@ -170,6 +178,8 @@ And that's it! To show off the power of our cool new ✨ verified ✨ data struc
     -- _ = 0 , 11 , node 9 9 empty (node 4 10 (node 3 9 empty empty) empty)
 ```
 
+Notice that we never needed to write a single proof about how "9000 < 9001" or that any of the other ordering/priorities are correct. Thanks, instances!
+
 Next, we define a method to `lookup` keys in a `Treap`, returning either a proof of existence or a proof of non-existence.
 
 ```agda
@@ -192,10 +202,10 @@ Next, we define a method to `lookup` keys in a `Treap`, returning either a proof
                         ; (right x∈r) → x∉r x∈r })
     ... | yes x∈r = yes (right x∈r)
 ```
+
+We make heavy use of some of our base lemmas, as well as the standard library's `Dec`idable type to construct this proof.
   
-Let's test some lookup proofs on a sample `Treap`!
-We can make use of the `invert` function in the standard library to extract the actual proof value from its wrapped `Decidable` type.
-Because this all works at the type level, we can set the type of the value to be whether we expect a value to be in `treap` or not, and if the proof inversion typechecks, it worked as expected!
+Let's test some lookups on a sample `Treap`! We can make use of the `invert` function in the standard library to extract the actual proof value from its wrapped `Decidable` type. Because this all works at the type level, we can set the type of the value to be whether we expect a value to be in `treap` or not, and if the proof inversion typechecks, it worked as expected!
 
 ```agda
   module _ where
@@ -226,10 +236,9 @@ Because this all works at the type level, we can set the type of the value to be
     -- _ = invert (proof (lookup 0 {! treap  !}))
 ```
 
-Finally, `Treap` is starting to take a familiar shape!
-But we still have a few utilities we need to define before we can really say we have a useful data structure.
-First on the list is `join`ing `Treap`s.
-We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and priority `p`, with the builtin requirement that `l < k < r` (in shorthand), and returns both the joined `Treap` and a proof that `k` is in the result.
+How cool! Finally, our `Treap` implementationis starting to take shape.
+
+But we still have a few primitive operations we need to define before we can really say we have a useful data structure. First on the list is `join`ing `Treap`s. We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and priority `p`, with the builtin requirement that `l < k < r` (in shorthand), and returns both the joined `Treap` and a proof that `k` is in the result.
 
 ```agda
   module Join (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -264,7 +273,16 @@ We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and pri
     ... | inj₂ p₂≤p₁ = 
       let r' , k∈r' = join k p l₁ {{p≤p₁}} (node p₂ {{p₂≤p₁}} k₂ r r₁)
       in node p₁ {{h₁}} k₁ l r' , right k∈r'
+```
 
+This looks complicated; let's pause for a second and talk about what is going on here. Fortunately, we already know that the first `Treap` argument must go to the left of the second argument due to their types! This means we only need to consider priorities; the locations we put things beyond that come very naturally from the known orderings. But we still have a lot of cases to consider, especially when both input `Treap`s are non-empty; let's focus on that one specifically. We use the standard library's `≤-total` ordering function to provide us evidence of the various comparisons of priorities. These are needed when we construct `node`s, as we are changing the expected types of these subtrees and therefore need to provide new proofs of their invariants. Based on how the priorities compare, we know which key needs to be at the top level. In the case that both inputs have a higher priority than the standalone key input, we need to additionally compare those to see which needs to be at the top. Nothing too difficult, just pretty messy. This is also the first place that we see some limitations of instances; they cannot automatically derive from things that are not already instances.
+
+As always, no implementation is complete without proving correctness! For `join`, this means that anything that was in the input `Treap`s (or the standalone argument) must be in the `join`ed `Treap`, and nothing else can be in there. Unfortunately, we were unable to make much progress on this proof; we decided that since it was clearly a fact that could be proven (with much difficulty), we would take it
+as fact without fully proving it for now.
+
+We also define a variant `joinPair` that does not need a standalone argument. The casing for this is fortunately much simpler, but we get to make use of our priority and bounds coercion functions for the first time!
+
+```agda
     -- start of a correctness proof for join
     joinCorrect : ∀ { x : Carrier } → {k : Carrier} → {p : ℕ} → {{h : p ≤ prio}} → { t₁ : Treap lower prio k } → { t₂ : Treap k prio upper } → ((x ∈ t₁ ⊎ x ≡ k ⊎ x ∈ t₂) → x ∈ (proj₁ (join k p t₁ {{h}} t₂))) × (x ∈ (proj₁ (join k p t₁ {{h}} t₂)) → (x ∈ t₁ ⊎ x ≡ k ⊎ x ∈ t₂))
     joinCorrect = {!   !} , {!   !}
@@ -287,8 +305,7 @@ We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and pri
     joinPairCorrect = {!   !} , {!   !}
 ```
 
-Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` based on some key `k`, such that `l < k < r`.
-`split` also decides whether the split key was in the input `Treap` or not.
+Next (and last!) on the list of primitives is `split`ting a Treap into 2 pieces `l` and `r` based on some key `k`, such that `l < k < r`. `split` also decides whether the split key was in the input `Treap` or not.
 
 ```agda
   module Split (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -306,16 +323,17 @@ Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` ba
       coercePrio L₁ {{≤-trans (validPriority L₁) p≤prio}}, lookup k T , coercePrio R₂ {{≤-trans (validPriority R₂) p≤prio}}
     ... | tri≈ ¬k<k₁ k≡k₁ ¬k₁<k = 
       Eq.subst (λ x → Treap lower prio x) (sym k≡k₁) (coercePrio l {{≤-trans (validPriority l) p≤prio}}) , 
-        (yes (here k≡k₁)) , 
+        yes (here k≡k₁) , 
       Eq.subst (λ x → Treap x prio upper) (sym k≡k₁) (coercePrio r {{≤-trans (validPriority r) p≤prio}})
     ... | tri> ¬k<k₁ ¬k≡k₁ k₁<k = 
       let (R₁ , _ , R₂) = split r k {{k₁<k}} {{it}} in
       let L₂ = join' k₁ p l {{h = ≤-refl}} R₁ in
-      coercePrio L₂ {{≤-trans (validPriority L₂) p≤prio}} , (lookup k T) , coercePrio R₂ {{≤-trans (validPriority R₂) p≤prio}}
+      coercePrio L₂ {{≤-trans (validPriority L₂) p≤prio}} , lookup k T , coercePrio R₂ {{≤-trans (validPriority R₂) p≤prio}}
 ```
 
-At long last, we can insert things into our `Treap`!
-Making good use of our `join` and `split` functions, this is almost trivial, and we also get a proof that our result contains the desired element for free!
+This implementation makes good use of both `join` and `lookup` here to make our lives a bit easier. We also use `validPriority` to stricten our types here, since we have evidence that some `Treap`s can have a smaller range of priorities than previously known. Again, no implementation is complete without a proof of correctness! However, this means that `split` will have to stay incomplete (for now). A proof of correctness would involve showing that the elements contained by the `Treap` were also contained by the splits.
+
+At long last, we can insert things into our `Treap`! Making good use of our `join` and `split` functions, this is almost trivial, and we also get a proof that our result contains the desired element for free!
 
 ```agda
   module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -336,17 +354,12 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
     
     -- start of a partial proof that insert is correct
     insertSound : (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ h₁ : lower < x }} → {{ h₂ : x < upper }} → k ∈ t → k ∈ (insert' x p {h = h} t {{h₁}} {{h₂}})
-    insertSound {k = k} x p {h} t k∈t with insert x p {h = h} t
-    ... | node p₁ k₁ l r , x∈t' with k∈t | compare k k₁ 
-    ... | here x₁ | tri< a ¬b ¬c = {!   !}
-    ... | here x₁ | tri≈ ¬a b ¬c = {!   !}
-    ... | here x₁ | tri> ¬a ¬b c = {!   !}
-    ... | left foo | bar = {!   !}
-    ... | right foo | bar = {!   !}
+    insertSound {k = k} x p {h} t k∈t = {!  !}
 ```
 
-But wait, with these primitives we also get an implementation of `delete` for free!
-We need a few more utilities 
+We again set up a proof of correctness, but as we know it is provable decided to leave it for the future.
+
+Finally, with these primitives we also get an implementation of `delete` for free! This one is a little more complicated than `insert`, but we use more of the standard library to derive that the element is correctly deleted from the `Treap`. A full proof of correctness would additionally involve showing that no other elements were removed.
 
 ```agda
   module Delete (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -371,6 +384,10 @@ We need a few more utilities
       {k' : Carrier} → {h₃ : k' Eq.≢ k} → k' ∈ t → k' ∈ (proj₁ (delete t k))
     deleteSound t k k'∈t = {!   !}
 ```
+
+And that is all! With this set of operations, we can say that we have a serviceable implementation of `Treap`s, and are on our way to having a fully verified implementation as well!
+
+Here is a module containing some stuff we were going to use, and ended up not needing. It felt like a waste to delete it, so we decided to leave them on display here instead \:)
 
 ```agda
   module Misc (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -400,3 +417,19 @@ We need a few more utilities
       let k<x , _ = lemmaContains x∈r
       in inj₁ (Eq.subst (_< x) (sym min≡) (trans (lemmaOrder r₁) k<x))
 ```
+
+# Future Work
+As you may have noticed, we have some unfinished goals in our code. These are at the very top of our to-do list, including the actual correctness proofs for `join`, `joinPair`, `split`. Once these are done, we will have a better idea of how to prove `insertSound` and `deleteSound`, showing that these operations behave the way we'd expect them to. 
+
+After this, we can start setting our sights higher. Up until now, the priorities inside the `Treap` have mostly been along for the ride, while occasionally adding extra cases to our proofs. However, since these play an integral role in `Treap`s, we want to prove things about them. One specific and interesting property is that when we assign priorities randomly, the resulting `Treap` will be balanced with high probability. There are many steps until we get there, but we hope to prove this in Agda eventually.
+
+Going in a very different direction, we would love to eventually prove the costs of the `Treap` operations we have implemented. However, since this would require us to either port the entire codebase into `calf` or somehow encode the costs in pure Agda, we leave this for the future when we have a lot more time.
+
+# Acknoledgements
+
+We would like to thank Bob Harper for teaching this incredible course this semester, as well as Harrison for his endless patience and willingness to work with us.
+
+# Resources Used 
+- [Formalize all the things (in Agda)](https://jesper.sikanda.be/posts/formalize-all-the-things.html)
+- [Leftist Heaps in Agda](https://gist.github.com/andreasabel/352fee52a39c0bebbd5059bff86d9b6e)
+- [How to Keep your Neighbours in Order](https://personal.cis.strath.ac.uk/conor.mcbride/Pivotal.pdf)
