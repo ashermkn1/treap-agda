@@ -283,3 +283,66 @@ Now, we can test some lookup proofs on a sample `Treap`:
     ... | left foo | bar = {!   !}
     ... | right foo | bar = {!   !}
 ``` 
+
+```agda
+  module Delete (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
+    open IsStrictTotalOrder IsSTO
+    open TreapBase Carrier _<_ IsSTO
+    open Lookup Carrier _<_ IsSTO
+    open Split Carrier _<_ IsSTO
+    open Join Carrier _<_ IsSTO
+
+    variable
+      lower upper k : Carrier
+      p prio : ℕ
+    
+    minElem : Treap lower prio upper → Carrier × ℕ → Carrier × ℕ
+    minElem empty kp = kp
+    minElem (node p k l _) _ = minElem l (k , p)
+    
+    minKey : Treap lower prio upper → Carrier → Carrier
+    minKey empty k = k
+    minKey (node _ k l _) _ = minKey l k
+
+    lemmaContains : { t : Treap lower prio upper } → k ∈ t  → lower < k × k < upper
+    lemmaContains {lower = lower} {upper = upper} {t = node p k₁ l r} (here k≡k₁) = 
+      (Eq.subst (lower <_) (sym k≡k₁) (lemmaOrder l)) , Eq.subst (_< upper) (sym k≡k₁) (lemmaOrder r)
+    lemmaContains {t = node p k₁ l r} (left k∈l) = 
+      let lower<k , k<k₁ = lemmaContains k∈l 
+      in lower<k , (trans k<k₁ (lemmaOrder r))
+    lemmaContains {t = node p k₁ l r} (right k∈r) = 
+      let k₁<k , k<upper = lemmaContains k∈r
+      in trans (lemmaOrder l) k₁<k , k<upper
+    
+    minKeySound : ∀ { x } → (t : Treap lower prio upper) → x ∈ t → (minKey t k < x ⊎ minKey t k ≡ x)
+    minKeySound (node p k empty r) (here x≡k) = inj₂ (sym x≡k)
+    minKeySound (node p k L@(node p₁ k₁ l r₁) r) (here x≡k) with minKeySound {k = k} {x = k₁} L (here _≡_.refl)
+    ... | inj₁ min< = inj₁ (trans min< (Eq.subst (k₁ <_) (sym x≡k) (lemmaOrder r₁)))
+    ... | inj₂ min≡ = inj₁ (Eq.subst₂ _<_ (sym min≡) (sym x≡k) (lemmaOrder r₁))
+    minKeySound (node p k l r) (left x∈l) = minKeySound {k = k} l x∈l
+    minKeySound (node p k empty r) (right x∈r) = inj₁ (proj₁ (lemmaContains x∈r))
+    minKeySound {x = x} (node p k L@(node p₁ k₁ l₁ r₁) r) (right x∈r) with minKeySound {k = k} {x = k₁} L (here _≡_.refl)
+    ... | inj₁ min< = 
+      let k<x , _ = lemmaContains x∈r
+      in inj₁ (trans min< (trans (lemmaOrder r₁) k<x))
+    ... | inj₂ min≡ = 
+      let k<x , _ = lemmaContains x∈r
+      in inj₁ (Eq.subst (_< x) (sym min≡) (trans (lemmaOrder r₁) k<x))
+
+
+    joinPair : (t₁ : Treap lower prio k) → (t₂ : Treap k prio upper) → Treap lower prio upper
+    joinPair t₁ empty = coerceUpper {h = it} t₁
+    joinPair empty t₂@(node p k₁ l r) = coerceLower {h = it} t₂
+    joinPair t₁@(node p₁ {{p₁≤prio}} k₁ l₁ r₁) t₂@(node p₂ {{p₂≤prio}} k₂ l₂ r₂) with ≤-total p₁ p₂
+    ... | inj₁ p₁≤p₂ = node p₂ {{p₂≤prio}} k₂ (joinPair {!   !} l₂) r₂
+    ... | inj₂ p₂≤p₁ = node p₁ {{p₁≤prio}} {!   !} {!   !} {!   !}
+      -- let 
+      --   kₘ , pₘ = minElem l (k₁ , p)
+      --   _ , dec , t₂' = split t₂ kₘ {{{!   !}}} {{{!   !}}}
+      -- in join' kₘ pₘ {! t₁  !} {! split  !}
+
+    delete : (t : Treap lower prio upper) → (k : Carrier) → {{lower < k}} → {{ k < upper }} → Treap lower prio upper
+    delete t k = 
+      let (L , _ , R) = split t k {{it}} {{it}}
+      in  joinPair L R
+```
