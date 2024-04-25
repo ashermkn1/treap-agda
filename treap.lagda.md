@@ -1,6 +1,10 @@
-In this file, we are providing an implementation of the `Treap` data structure with packaged proofs that the ordering and priority invariants are met.
-At a high level, the `Treap` datatype consists of an `empty` constructor and a `node` constructor that contains a key, priority, and two child trees.
-We will discuss the specifics of the verification in the report; for now, let's get into the code!
+In this file, we are providing an implementation of the `Treap` data structure (as detailed in 15-210) with packaged proofs that the ordering and priority invariants are met.
+At a high level, a `Treap` can either be `empty` or a `node` constructor that contains a key, priority, and two child trees.
+`Treap`s are an extension of BSTs with priorities for each key, with the additional invariant that the priorities of child nodes must be less than or equal to the current priority.
+When priorities are assigned to keys at random, it can be proven that the height of the tree is logarithmic in the number of nodes with high probability, and all of the standard tree complexities can then be derived in expectation.
+
+Here, we provide a verified implementation of the `Treap` datatype, along with verified implementations of several primitive operations.
+Specifically, we have implemented `lookup`, `_∈_`, `join`, `split`, `insert`, and `delete` --- all with some level of correctness proofs.
 
 We start off with some boilerplate imports and some basic utilities needed for our instance types to work (more about this in the report):
 
@@ -261,6 +265,10 @@ We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and pri
       let r' , k∈r' = join k p l₁ {{p≤p₁}} (node p₂ {{p₂≤p₁}} k₂ r r₁)
       in node p₁ {{h₁}} k₁ l r' , right k∈r'
 
+    -- start of a correctness proof for join
+    joinCorrect : ∀ { x : Carrier } → {k : Carrier} → {p : ℕ} → {{h : p ≤ prio}} → { t₁ : Treap lower prio k } → { t₂ : Treap k prio upper } → ((x ∈ t₁ ⊎ x ≡ k ⊎ x ∈ t₂) → x ∈ (proj₁ (join k p t₁ {{h}} t₂))) × (x ∈ (proj₁ (join k p t₁ {{h}} t₂)) → (x ∈ t₁ ⊎ x ≡ k ⊎ x ∈ t₂))
+    joinCorrect = {!   !} , {!   !}
+    
     -- removes the proof for situations where it is not needed
     join' : (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
     join' k p l {{h}} r = proj₁ (join k p l {{h = h}} r)
@@ -355,7 +363,7 @@ We need a few more utilities
          contraposition from (λ {(inj₁ k∈L) → lemmaRight L k (inj₂ _≡_.refl) k∈L
                                ; (inj₂ k∈R) → lemmaLeft R k (inj₂ _≡_.refl) k∈R})
 
-    -- start of a partial proof that insert is correct
+    -- start of a partial proof that delete is correct
     deleteSound : 
       (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → 
       {k' : Carrier} → {h₃ : k' Eq.≢ k} → k' ∈ t → k' ∈ (proj₁ (delete t k))
