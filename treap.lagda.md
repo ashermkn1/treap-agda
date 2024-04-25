@@ -53,6 +53,21 @@ We define our structure where the keys are an abstract `Carrier` type that suppo
     -- wrapper type to represent any `Treap` with priority at most `prio`
     ΣTreap : (prio : ℕ) → Set
     ΣTreap prio = ∃[ lower ] ∃[ upper ] Treap lower prio upper
+
+    -- returns lowest valid priority of a `Treap`
+    priority : ∀ { lower prio upper } → Treap lower prio upper → ℕ
+    priority empty = 0
+    priority (node p k t t₁) = p
+
+    -- returns an explicit inequality that the `Treap`'s priority is a lower bound on the type's priority
+    validPriority : ∀ { lower prio upper } → (t : Treap lower prio upper) → priority t ≤ prio
+    validPriority empty = z≤n
+    validPriority (node p {{p≤prio}} k t t₁) = p≤prio
+    
+    -- changes the type of a `Treap` into any type that involves a valid priority for that `Treap`
+    treapCoerce : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
+    treapCoerce empty = empty
+    treapCoerce {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
 ```
 
 We also define a notion of "is in" for `Treap`s:
@@ -91,11 +106,11 @@ And that's it! To show off the power of our cool new ✨ verified ✨ data struc
     -- _ = 0 , 11 , node 9 9 empty (node 4 10 (node 3 9 empty empty) empty)
 ```
 
-Now, we define a method to `lookup` keys in a `Treap`, returning either a proof of existence or a proof of non-existence.
+Next, we define a method to `lookup` keys in a `Treap`, returning either a proof of existence or a proof of non-existence.
 We make use of 3 lemmas:
-  `lemmaOrder` to show that the `lower` bound of a `Treap` is less than its `upper` bound,
-  `lemmaLeft` to show that given some `Treap t` and a key `x` that is less than or equal to `lower`, `x ∉ t`, and
-  `lemmaRight` to show that given some `Treap t` and a key `x` where `upper` is less than or equal to `x`, `x ∉ t`.
+- `lemmaOrder` to show that the `lower` bound of a `Treap` is less than its `upper` bound,
+- `lemmaLeft` to show that given some `Treap t` and a key `x` that is less than or equal to `lower`, `x ∉ t`, and
+- `lemmaRight` to show that given some `Treap t` and a key `x` where `upper` is less than or equal to `x`, `x ∉ t`.
 
 ```agda
   module Lookup (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -146,7 +161,9 @@ We make use of 3 lemmas:
     ... | yes x∈r = yes (right x∈r)
 ```
   
-Now, we can test some lookup proofs on a sample `Treap`:
+Let's test some lookup proofs on a sample `Treap`!
+We can make use of the `invert` function in the standard library to extract the actual proof value from its wrapped `Decidable` type.
+Because this all works at the type level, we can set the type of the value to be whether we expect a value to be in `treap` or not, and if the proof inversion typechecks, it worked as expected!
 
 ```agda
   module _ where
@@ -156,41 +173,36 @@ Now, we can test some lookup proofs on a sample `Treap`:
     treap : Treap 0 15 30
     treap = node 15 22 (node 15 15 (node 3 8 empty (node 0 10 empty empty)) (node 11 20 (node 10 18 empty empty) (node 11 21 empty empty))) (node 6 29 empty empty)
 
-    15∈treap : 15 ∈ treap
-    15∈treap = invert (proof (lookup 15 treap))
+    _ : 15 ∈ treap
+    _ = invert (proof (lookup 15 treap))
 
-    16∉treap : 16 ∉ treap
-    16∉treap = invert (proof (lookup 16 treap))
+    _ : 16 ∉ treap
+    _ = invert (proof (lookup 16 treap))
 
-    21∈treap : 21 ∈ treap
-    21∈treap = invert (proof (lookup 21 treap))
+    _ : 21 ∈ treap
+    _ = invert (proof (lookup 21 treap))
 
-    45∉treap : 45 ∉ treap
-    45∉treap = invert (proof (lookup 45 treap))
+    _ : 45 ∉ treap
+    _ = invert (proof (lookup 45 treap))
 
     -- cannot refine since 22 is in `treap`
-    -- 22∉treap : 22 ∉ treap
-    -- 22∉treap = invert (proof (lookup 22 {! treap  !}))
+    -- _ : 22 ∉ treap
+    -- _ = invert (proof (lookup 22 {! treap  !}))
 
     -- cannot refine since 0 is not in `treap`
-    -- 0∈treap : 0 ∈ treap
-    -- 0∈treap = invert (proof (lookup 0 {! treap  !}))
+    -- _ : 0 ∈ treap
+    -- _ = invert (proof (lookup 0 {! treap  !}))
 ```
 
+Finally, `Treap` is starting to take a familiar shape!
+But we still have a few utilities we need to define before we can really say we have a useful data structure.
+First on the list is `join`ing `Treap`s.
+We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and priority `p`, with the builtin requirement that `l < k < r` (in shorthand), and returns both the joined `Treap` and a proof that `k` is in the result.
 
 ```agda
   module Join (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
     open TreapBase Carrier _<_ IsSTO
-    
-
-    priority : ∀ { lower prio upper } → Treap lower prio upper → ℕ
-    priority empty = 0
-    priority (node p k t t₁) = p
-    
-    treapCoerce : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
-    treapCoerce empty = empty
-    treapCoerce {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
 
     {-# TERMINATING #-}
     join : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → ∃[ t' ] k ∈ t'
@@ -221,9 +233,13 @@ Now, we can test some lookup proofs on a sample `Treap`:
       let r' , k∈r' = join k p l₁ {{p≤p₁}} (node p₂ {{p₂≤p₁}} k₂ r r₁)
       in node p₁ {{h₁}} k₁ l r' , right k∈r'
 
+    -- removes the proof for situations where it is not needed
     join' : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
     join' k p l {{h}} r = proj₁ (join k p l {{h = h}} r)
 ```
+
+Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` based on some key `k`, such that `l < k < r`.
+`split` also decides whether the split key was in the input `Treap` or not.
 
 ```agda
   module Split (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -231,33 +247,26 @@ Now, we can test some lookup proofs on a sample `Treap`:
     open TreapBase Carrier _<_ IsSTO
     open Lookup Carrier _<_ IsSTO
     open Join Carrier _<_ IsSTO
-
-    coercePrio : ∀ { lower prio upper prio' } → { h : prio ≤ prio' } → Treap lower prio upper → Treap lower prio' upper
-    coercePrio empty = empty
-    coercePrio {prio' = prio'} {h = h} (node p {{p≤prio}} k l r) = node p {{≤-trans p≤prio h}} k l r
-    
-    coerceUpper : ∀ { lower prio upper upper' } → { h : upper < upper' } → Treap lower prio upper → Treap lower prio upper'
-    coerceUpper {h = h} (empty {{lower<upper}}) = empty {{trans lower<upper h}}
-    coerceUpper {h = h} (node p {{p≤prio}} k l r) = node p {{p≤prio}} k l (coerceUpper {h = h} r)
-    
-    coerceLower : ∀ { lower prio upper lower' } → {h : lower' < lower } → Treap lower prio upper → Treap lower' prio upper
-    coerceLower {h = h} (empty {{lower<upper}}) = empty {{trans h lower<upper}}
-    coerceLower {h = h} (node p {{p≤prio}} k l r ) = node p {{p≤prio}} k (coerceLower {h = h} l) r
     
     split : ∀ { lower prio upper } → (t : Treap lower prio upper) → (k : Carrier) → {{ lower < k }} → {{ k < upper }} → Treap lower prio k × Dec (k ∈ t) × Treap k prio upper
     split empty k = empty , no (λ ()) , empty
     split {lower = lower} {prio = prio} {upper = upper} T@(node p {{p≤prio}} k₁ l r) k with compare k k₁
     ... | tri< k<k₁ ¬k≡k₁ ¬k₁<k = 
-      let (L₁ , _ , L₂) = split l k {{it}} {{k<k₁}} 
-      in coercePrio {h = p≤prio} L₁ , lookup k T , coercePrio {h = p≤prio} (join' k₁ p L₂ {{h = ≤-refl}} r)
+      let (L₁ , _ , L₂) = split l k {{it}} {{k<k₁}} in
+      let R₂ = join' k₁ p L₂ {{h = ≤-refl}} r in
+      treapCoerce L₁ {{≤-trans (validPriority L₁) p≤prio}}, lookup k T , treapCoerce R₂ {{≤-trans (validPriority R₂) p≤prio}}
     ... | tri≈ ¬k<k₁ k≡k₁ ¬k₁<k = 
-      Eq.subst (λ x → Treap lower prio x) (sym k≡k₁) (coercePrio {h = p≤prio} l) , 
+      Eq.subst (λ x → Treap lower prio x) (sym k≡k₁) (treapCoerce l {{≤-trans (validPriority l) p≤prio}}) , 
         (yes (here k≡k₁)) , 
-      Eq.subst (λ x → Treap x prio upper) (sym k≡k₁) (coercePrio {h = p≤prio} r)
+      Eq.subst (λ x → Treap x prio upper) (sym k≡k₁) (treapCoerce r {{≤-trans (validPriority r) p≤prio}})
     ... | tri> ¬k<k₁ ¬k≡k₁ k₁<k = 
-      let (R₁ , _ , R₂) = split r k {{k₁<k}} {{it}} 
-      in  coercePrio {h = p≤prio} (join' k₁ p l {{h = ≤-refl}} R₁) , (lookup k T) , coercePrio {h = p≤prio} R₂
+      let (R₁ , _ , R₂) = split r k {{k₁<k}} {{it}} in
+      let L₂ = join' k₁ p l {{h = ≤-refl}} R₁ in
+      treapCoerce L₂ {{≤-trans (validPriority L₂) p≤prio}} , (lookup k T) , treapCoerce R₂ {{≤-trans (validPriority R₂) p≤prio}}
 ```
+
+At long last, we can insert (unique) things into our `Treap`!
+Making good use of our `join` and `split` functions, this is almost trivial, and we also get a proof that our result contains the desired element for free!
 
 ```agda
   module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -269,13 +278,14 @@ Now, we can test some lookup proofs on a sample `Treap`:
 
     insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → ∃[ t' ] x ∈ t' 
     insert x p {h = h} t x∉t = 
-      let 
-        (L , dec , R) = split t x
-      in join x p L {{h = h}} R
+      let L , dec , R = split t x in
+      join x p L {{h = h}} R
 
+    -- removes the proof for situations where it is not needed
     insert' : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
     insert' x p {h} t x∉t = proj₁ (insert x p {h = h} t x∉t)
     
+    -- start of a partial proof that insert is correct
     insertSound : ∀ { lower prio upper k } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ h₁ : lower < x }} → {{ h₂ : x < upper }} → (x∉t : x ∉ t) → k ∈ t → k ∈ (insert' x p {h = h} t {{h₁}} {{h₂}} x∉t)
     insertSound {k = k} x p {h} t x∉t k∈t with insert x p {h = h} t x∉t 
     ... | node p₁ k₁ l r , x∈t' with k∈t | compare k k₁ 
