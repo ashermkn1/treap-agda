@@ -7,7 +7,7 @@ We start off with some boilerplate imports and some basic utilities needed for o
 ```agda
 module Treap where
   -- relations
-  open import Relation.Binary
+  open import Relation.Binary hiding (_⇔_)
   open import Relation.Nullary
   open import Relation.Binary.PropositionalEquality as Eq using (_≡_ ; sym)
   
@@ -21,6 +21,8 @@ module Treap where
   open import Agda.Builtin.Bool 
   open import Data.Bool.Base using (T)
   open import Function.Base using (_∘_)
+  open import Function.Bundles
+  open import Function.Properties.Equivalence using (⇔⇒⟶ ; ⇔⇒⟵)
   
   variable A : Set
 
@@ -65,9 +67,17 @@ We define our structure where the keys are an abstract `Carrier` type that suppo
     validPriority (node p {{p≤prio}} k t t₁) = p≤prio
     
     -- changes the type of a `Treap` into any type that involves a valid priority for that `Treap`
-    treapCoerce : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
-    treapCoerce empty = empty
-    treapCoerce {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
+    coercePrio : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
+    coercePrio empty = empty
+    coercePrio {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
+
+    coerceUpper : ∀ { lower prio upper upper' } → { h : upper < upper' } → Treap lower prio upper → Treap lower prio upper'
+    coerceUpper {h = h} (empty {{lower<upper}}) = empty {{trans lower<upper h}}
+    coerceUpper {h = h} (node p {{p≤prio}} k l r) = node p {{p≤prio}} k l (coerceUpper {h = h} r)
+    
+    coerceLower : ∀ { lower prio upper lower' } → {h : lower' < lower } → Treap lower prio upper → Treap lower' prio upper
+    coerceLower {h = h} (empty {{lower<upper}}) = empty {{trans h lower<upper}}
+    coerceLower {h = h} (node p {{p≤prio}} k l r ) = node p {{p≤prio}} k (coerceLower {h = h} l) r
 ```
 
 We also define a notion of "is in" for `Treap`s:
@@ -254,15 +264,15 @@ Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` ba
     ... | tri< k<k₁ ¬k≡k₁ ¬k₁<k = 
       let (L₁ , _ , L₂) = split l k {{it}} {{k<k₁}} in
       let R₂ = join' k₁ p L₂ {{h = ≤-refl}} r in
-      treapCoerce L₁ {{≤-trans (validPriority L₁) p≤prio}}, lookup k T , treapCoerce R₂ {{≤-trans (validPriority R₂) p≤prio}}
+      coercePrio L₁ {{≤-trans (validPriority L₁) p≤prio}}, lookup k T , coercePrio R₂ {{≤-trans (validPriority R₂) p≤prio}}
     ... | tri≈ ¬k<k₁ k≡k₁ ¬k₁<k = 
-      Eq.subst (λ x → Treap lower prio x) (sym k≡k₁) (treapCoerce l {{≤-trans (validPriority l) p≤prio}}) , 
+      Eq.subst (λ x → Treap lower prio x) (sym k≡k₁) (coercePrio l {{≤-trans (validPriority l) p≤prio}}) , 
         (yes (here k≡k₁)) , 
-      Eq.subst (λ x → Treap x prio upper) (sym k≡k₁) (treapCoerce r {{≤-trans (validPriority r) p≤prio}})
+      Eq.subst (λ x → Treap x prio upper) (sym k≡k₁) (coercePrio r {{≤-trans (validPriority r) p≤prio}})
     ... | tri> ¬k<k₁ ¬k≡k₁ k₁<k = 
       let (R₁ , _ , R₂) = split r k {{k₁<k}} {{it}} in
       let L₂ = join' k₁ p l {{h = ≤-refl}} R₁ in
-      treapCoerce L₂ {{≤-trans (validPriority L₂) p≤prio}} , (lookup k T) , treapCoerce R₂ {{≤-trans (validPriority R₂) p≤prio}}
+      coercePrio L₂ {{≤-trans (validPriority L₂) p≤prio}} , (lookup k T) , coercePrio R₂ {{≤-trans (validPriority R₂) p≤prio}}
 ```
 
 At long last, we can insert (unique) things into our `Treap`!
@@ -339,20 +349,28 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
       let k<x , _ = lemmaContains x∈r
       in inj₁ (Eq.subst (_< x) (sym min≡) (trans (lemmaOrder r₁) k<x))
 
-
+    {-# TERMINATING #-}
     joinPair : (t₁ : Treap lower prio k) → (t₂ : Treap k prio upper) → Treap lower prio upper
     joinPair t₁ empty = coerceUpper {h = it} t₁
     joinPair empty t₂@(node p k₁ l r) = coerceLower {h = it} t₂
     joinPair t₁@(node p₁ {{p₁≤prio}} k₁ l₁ r₁) t₂@(node p₂ {{p₂≤prio}} k₂ l₂ r₂) with ≤-total p₁ p₂
-    ... | inj₁ p₁≤p₂ = node p₂ {{p₂≤prio}} k₂ (joinPair {!   !} l₂) r₂
-    ... | inj₂ p₂≤p₁ = node p₁ {{p₁≤prio}} {!   !} {!   !} {!   !}
-      -- let 
-      --   kₘ , pₘ = minElem l (k₁ , p)
-      --   _ , dec , t₂' = split t₂ kₘ {{{!   !}}} {{{!   !}}}
-      -- in join' kₘ pₘ {! t₁  !} {! split  !}
+    ... | inj₁ p₁≤p₂ = node p₂ {{p₂≤prio}} k₂ (joinPair (coercePrio t₁ {{p₁≤p₂}}) l₂) r₂
+    ... | inj₂ p₂≤p₁ = node p₁ {{p₁≤prio}} k₁ l₁ (joinPair r₁ (coercePrio t₂ {{p₂≤p₁}}))
 
-    delete : (t : Treap lower prio upper) → (k : Carrier) → {{lower < k}} → {{ k < upper }} → Treap lower prio upper
+    joinPairCorrect : { x : Carrier } → { t₁ : Treap lower prio k } → { t₂ : Treap k prio upper } → (((x ∈ t₁) ⊎ (x ∈ t₂)) → x ∈ (joinPair t₁ t₂)) × (x ∈ (joinPair t₁ t₂) → ((x ∈ t₁) ⊎ (x ∈ t₂)))
+    joinPairCorrect = {!   !} , {!   !}
+    
+    delete : (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → Σ[ t' ∈ Treap lower prio upper ] k ∉ t'
     delete t k = 
-      let (L , _ , R) = split t k {{it}} {{it}}
-      in  joinPair L R
+      let 
+        (L , _ , R) = split t k {{it}} {{it}}
+        _ , from = joinPairCorrect {x = k} {t₁ = L} {t₂ = R}
+      in joinPair L R , 
+         contraposition from (λ {(inj₁ k∈L) → lemmaRight L k (inj₂ _≡_.refl) k∈L
+                               ; (inj₂ k∈R) → lemmaLeft R k (inj₂ _≡_.refl) k∈R})
+
+    deleteSound : 
+      (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → 
+      {k' : Carrier} → {h₃ : k' Eq.≢ k} → k' ∈ t → k' ∈ (proj₁ (delete t k))
+    deleteSound t k k'∈t = {!   !}
 ```
