@@ -338,7 +338,9 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
     insertSound : (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ h₁ : lower < x }} → {{ h₂ : x < upper }} → k ∈ t → k ∈ (insert' x p {h = h} t {{h₁}} {{h₂}})
     insertSound {k = k} x p {h} t k∈t with insert x p {h = h} t
     ... | node p₁ k₁ l r , x∈t' with k∈t | compare k k₁ 
-    ... | here x₁ | bar = {!   !}
+    ... | here x₁ | tri< a ¬b ¬c = {!   !}
+    ... | here x₁ | tri≈ ¬a b ¬c = {!   !}
+    ... | here x₁ | tri> ¬a ¬b c = {!   !}
     ... | left foo | bar = {!   !}
     ... | right foo | bar = {!   !}
 ```
