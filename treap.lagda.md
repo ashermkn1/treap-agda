@@ -49,38 +49,51 @@ We define our structure where the keys are an abstract `Carrier` type that suppo
     open IsStrictTotalOrder IsSTO
 
     data Treap (lower : Carrier) (prio : ℕ) (upper : Carrier) : Set where
-      empty : {{lower < upper }} → Treap lower prio upper
+      empty : {{lower < upper}} → Treap lower prio upper
       node  : (p : ℕ) → {{p ≤ prio}} → (k : Carrier) → Treap lower p k → Treap k p upper → Treap lower prio upper
     
+    variable
+      k : Carrier
+      p prio : ℕ
+      lower upper lower' upper' : Carrier
+      t₁ t₂ : Treap lower prio upper
+      
     -- wrapper type to represent any `Treap` with priority at most `prio`
     ΣTreap : (prio : ℕ) → Set
     ΣTreap prio = ∃[ lower ] ∃[ upper ] Treap lower prio upper
 
     -- returns lowest valid priority of a `Treap`
-    priority : ∀ { lower prio upper } → Treap lower prio upper → ℕ
+    priority : Treap lower prio upper → ℕ
     priority empty = 0
     priority (node p k t t₁) = p
 
     -- returns an explicit inequality that the `Treap`'s priority is a lower bound on the type's priority
-    validPriority : ∀ { lower prio upper } → (t : Treap lower prio upper) → priority t ≤ prio
+    validPriority : (t : Treap lower prio upper) → priority t ≤ prio
     validPriority empty = z≤n
     validPriority (node p {{p≤prio}} k t t₁) = p≤prio
     
     -- changes the type of a `Treap` into any type that involves a valid priority for that `Treap`
-    coercePrio : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
+    coercePrio : (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
     coercePrio empty = empty
     coercePrio {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
 
-    coerceUpper : ∀ { lower prio upper upper' } → { h : upper < upper' } → Treap lower prio upper → Treap lower prio upper'
+    -- changes the type of a `Treap` into any type that involves a looser upper bound for that `Treap`
+    coerceUpper : { h : upper < upper' } → Treap lower prio upper → Treap lower prio upper'
     coerceUpper {h = h} (empty {{lower<upper}}) = empty {{trans lower<upper h}}
     coerceUpper {h = h} (node p {{p≤prio}} k l r) = node p {{p≤prio}} k l (coerceUpper {h = h} r)
     
-    coerceLower : ∀ { lower prio upper lower' } → {h : lower' < lower } → Treap lower prio upper → Treap lower' prio upper
+    -- changes the type of a `Treap` into any type that involves a looser lower bound for that `Treap`
+    coerceLower : {h : lower' < lower } → Treap lower prio upper → Treap lower' prio upper
     coerceLower {h = h} (empty {{lower<upper}}) = empty {{trans h lower<upper}}
     coerceLower {h = h} (node p {{p≤prio}} k l r ) = node p {{p≤prio}} k (coerceLower {h = h} l) r
+
+    -- extract bounds well-formedness from `Treap`
+    lemmaOrder : (t : Treap lower p upper) → lower < upper
+    lemmaOrder empty = it
+    lemmaOrder (node p k l r) = trans (lemmaOrder l) (lemmaOrder r)
 ```
 
-We also define a notion of "is in" for `Treap`s:
+We also define a notion of "is in", and some corresponding lemmas for `Treap`s:
 
 ```agda 
     data _∈_ {lower p upper} (x : Carrier) : (t : Treap lower p upper) → Set where
@@ -88,8 +101,45 @@ We also define a notion of "is in" for `Treap`s:
       left  : ∀ {p' h y l r} → x ∈ l → x ∈ node p' {{h}} y l r
       right : ∀ {p' h y l r} → x ∈ r → x ∈ node p' {{h}} y l r
 
-    _∉_ : ∀ {lower p upper} (x : Carrier) (t : Treap lower p upper) → Set
+    _∉_ : (x : Carrier) (t : Treap lower p upper) → Set
     x ∉ t = ¬ (x ∈ t)
+
+    -- given a `Treap` and evidence that a key `k` is in it, we can derive `lower < k < upper`
+    lemmaContains : { t : Treap lower prio upper } → k ∈ t → lower < k × k < upper
+    lemmaContains {lower = lower} {upper = upper} {t = node p k₁ l r} (here k≡k₁) = 
+      (Eq.subst (lower <_) (sym k≡k₁) (lemmaOrder l)) , Eq.subst (_< upper) (sym k≡k₁) (lemmaOrder r)
+    lemmaContains {t = node p k₁ l r} (left k∈l) = 
+      let lower<k , k<k₁ = lemmaContains k∈l 
+      in lower<k , (trans k<k₁ (lemmaOrder r))
+    lemmaContains {t = node p k₁ l r} (right k∈r) = 
+      let k₁<k , k<upper = lemmaContains k∈r
+      in trans (lemmaOrder l) k₁<k , k<upper
+
+    -- given a `Treap` and some key that is ≤ the `lower` bound, we can derive that it is not in the `Treap`
+    lemmaLeft : (t : Treap lower p upper) → (x : Carrier) → (x < lower ⊎ x ≡ lower) → x ∉ t
+    lemmaLeft empty x x≤lower = λ ()
+    lemmaLeft (node p k l r) x x≤lower with compare x k
+    ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
+                                ; (left x∈l) → lemmaLeft l x x≤lower x∈l
+                                ; (right x∈r) → lemmaLeft r x (inj₁ x<k) x∈r }
+    ... | tri≈ ¬x<k x≡k ¬k<x = λ { (here x≡k) → ¬x<k ([ (λ x<lower → trans x<lower (lemmaOrder l)) , (λ x≡lower → Eq.subst (_< k) (sym x≡lower) (lemmaOrder l) )] x≤lower)
+                                ; (left x∈l) → lemmaLeft l x x≤lower x∈l
+                                ; (right x∈r) → lemmaLeft r x (inj₂ x≡k) x∈r }
+    ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
+                                ; (left x∈l) → lemmaLeft l x x≤lower x∈l
+                                ; (right x∈r) → ¬x<k ([ (λ x<lower → trans x<lower (lemmaOrder l)) , (λ x≡lower → Eq.subst (_< k) (sym x≡lower) (lemmaOrder l)) ] x≤lower) }
+    
+    -- given a `Treap` and some key that is > the `upper` bound, we can derive that it is not in the `Treap`
+    lemmaRight : (t : Treap lower p upper) → (x : Carrier) → (upper < x ⊎ x ≡ upper) → x ∉ t
+    lemmaRight empty x x≥upper = λ ()
+    lemmaRight (node p k l r) x x≥upper with compare x k
+    ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
+                                ; (left x∈l) → lemmaRight l x ([ (λ upper<x → inj₁ (trans (lemmaOrder r) upper<x)) , (λ x≡upper → inj₁ (Eq.subst (k <_) (sym x≡upper) (lemmaOrder r))) ] x≥upper) x∈l
+                                ; (right x∈r) → lemmaRight r x x≥upper x∈r }
+    ... | tri≈ ¬x<k x≡k ¬k<x = λ _ → ¬k<x ([ trans (lemmaOrder r) , (λ x≡upper → Eq.subst (k <_) (sym x≡upper) (lemmaOrder r)) ] x≥upper)
+    ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
+                                ; (left x∈l) → lemmaRight l x (inj₁ k<x) x∈l
+                                ; (right x∈r) → lemmaRight r x x≥upper x∈r }
 ```
 
 And that's it! To show off the power of our cool new ✨ verified ✨ data structure, let's write some tests to show off its power:
@@ -117,45 +167,13 @@ And that's it! To show off the power of our cool new ✨ verified ✨ data struc
 ```
 
 Next, we define a method to `lookup` keys in a `Treap`, returning either a proof of existence or a proof of non-existence.
-We make use of 3 lemmas:
-- `lemmaOrder` to show that the `lower` bound of a `Treap` is less than its `upper` bound,
-- `lemmaLeft` to show that given some `Treap t` and a key `x` that is less than or equal to `lower`, `x ∉ t`, and
-- `lemmaRight` to show that given some `Treap t` and a key `x` where `upper` is less than or equal to `x`, `x ∉ t`.
 
 ```agda
   module Lookup (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
     open TreapBase Carrier _<_ IsSTO
     
-    lemmaOrder : ∀ {lower p upper} → (t : Treap lower p upper) → lower < upper
-    lemmaOrder empty = it
-    lemmaOrder (node p k l r) = trans (lemmaOrder l) (lemmaOrder r)
-
-    lemmaLeft : ∀ {lower p upper} → (t : Treap lower p upper) → (x : Carrier) → (x < lower ⊎ x ≡ lower) → x ∉ t
-    lemmaLeft empty x x≤lower = λ ()
-    lemmaLeft (node p k l r) x x≤lower with compare x k
-    ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
-                                ; (left x∈l) → lemmaLeft l x x≤lower x∈l
-                                ; (right x∈r) → lemmaLeft r x (inj₁ x<k) x∈r }
-    ... | tri≈ ¬x<k x≡k ¬k<x = λ { (here x≡k) → ¬x<k ([ (λ x<lower → trans x<lower (lemmaOrder l)) , (λ x≡lower → Eq.subst (_< k) (sym x≡lower) (lemmaOrder l) )] x≤lower)
-                                ; (left x∈l) → lemmaLeft l x x≤lower x∈l
-                                ; (right x∈r) → lemmaLeft r x (inj₂ x≡k) x∈r }
-    ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
-                                ; (left x∈l) → lemmaLeft l x x≤lower x∈l
-                                ; (right x∈r) → ¬x<k ([ (λ x<lower → trans x<lower (lemmaOrder l)) , (λ x≡lower → Eq.subst (_< k) (sym x≡lower) (lemmaOrder l)) ] x≤lower) }
-    
-    lemmaRight : ∀ {lower p upper} → (t : Treap lower p upper) → (x : Carrier) → (upper < x ⊎ x ≡ upper) → x ∉ t
-    lemmaRight empty x x≥upper = λ ()
-    lemmaRight (node p k l r) x x≥upper with compare x k
-    ... | tri< x<k ¬x≡k ¬k<x = λ { (here x≡k) → ¬x≡k x≡k
-                                ; (left x∈l) → lemmaRight l x ([ (λ upper<x → inj₁ (trans (lemmaOrder r) upper<x)) , (λ x≡upper → inj₁ (Eq.subst (k <_) (sym x≡upper) (lemmaOrder r))) ] x≥upper) x∈l
-                                ; (right x∈r) → lemmaRight r x x≥upper x∈r }
-    ... | tri≈ ¬x<k x≡k ¬k<x = λ _ → ¬k<x ([ trans (lemmaOrder r) , (λ x≡upper → Eq.subst (k <_) (sym x≡upper) (lemmaOrder r)) ] x≥upper)
-    ... | tri> ¬x<k ¬x≡k k<x = λ { (here x≡k) → ¬x≡k x≡k
-                                ; (left x∈l) → lemmaRight l x (inj₁ k<x) x∈l
-                                ; (right x∈r) → lemmaRight r x x≥upper x∈r }
-    
-    lookup : ∀ { lower p upper } → (x : Carrier) → (t : Treap lower p upper) → Dec (x ∈ t)
+    lookup : (x : Carrier) → (t : Treap lower p upper) → Dec (x ∈ t)
     lookup x empty = no (λ ())
     lookup x (node p k l r) with compare x k
     lookup x (node p k l r) | tri≈ _ x≡k _ = yes (here x≡k)
@@ -215,7 +233,7 @@ We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and pri
     open TreapBase Carrier _<_ IsSTO
 
     {-# TERMINATING #-}
-    join : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → ∃[ t' ] k ∈ t'
+    join : (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → ∃[ t' ] k ∈ t'
     join k p empty {{h}} empty = node p {{h}} k empty empty , here _≡_.refl
     join k p empty {{h}} (node p₁ {{h₁}} k₁ r r₁) with ≤-total p p₁
     ... | inj₁ p≤p₁ = 
@@ -244,8 +262,21 @@ We define `join` that takes in `Treap`s `l` and `r` as well as a key `k` and pri
       in node p₁ {{h₁}} k₁ l r' , right k∈r'
 
     -- removes the proof for situations where it is not needed
-    join' : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
+    join' : (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
     join' k p l {{h}} r = proj₁ (join k p l {{h = h}} r)
+
+    -- joins two `Treap`s without a middle key/priority pair
+    {-# TERMINATING #-}
+    joinPair : (t₁ : Treap lower prio k) → (t₂ : Treap k prio upper) → Treap lower prio upper
+    joinPair t₁ empty = coerceUpper {h = it} t₁
+    joinPair empty t₂@(node p k₁ l r) = coerceLower {h = it} t₂
+    joinPair t₁@(node p₁ {{p₁≤prio}} k₁ l₁ r₁) t₂@(node p₂ {{p₂≤prio}} k₂ l₂ r₂) with ≤-total p₁ p₂
+    ... | inj₁ p₁≤p₂ = node p₂ {{p₂≤prio}} k₂ (joinPair (coercePrio t₁ {{p₁≤p₂}}) l₂) r₂
+    ... | inj₂ p₂≤p₁ = node p₁ {{p₁≤prio}} k₁ l₁ (joinPair r₁ (coercePrio t₂ {{p₂≤p₁}}))
+
+    -- start of a correctness proof for `joinPair`
+    joinPairCorrect : ∀ { x : Carrier } → { t₁ : Treap lower prio k } → { t₂ : Treap k prio upper } → (((x ∈ t₁) ⊎ (x ∈ t₂)) → x ∈ (joinPair t₁ t₂)) × (x ∈ (joinPair t₁ t₂) → ((x ∈ t₁) ⊎ (x ∈ t₂)))
+    joinPairCorrect = {!   !} , {!   !}
 ```
 
 Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` based on some key `k`, such that `l < k < r`.
@@ -258,7 +289,7 @@ Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` ba
     open Lookup Carrier _<_ IsSTO
     open Join Carrier _<_ IsSTO
     
-    split : ∀ { lower prio upper } → (t : Treap lower prio upper) → (k : Carrier) → {{ lower < k }} → {{ k < upper }} → Treap lower prio k × Dec (k ∈ t) × Treap k prio upper
+    split : (t : Treap lower prio upper) → (k : Carrier) → {{ lower < k }} → {{ k < upper }} → Treap lower prio k × Dec (k ∈ t) × Treap k prio upper
     split empty k = empty , no (λ ()) , empty
     split {lower = lower} {prio = prio} {upper = upper} T@(node p {{p≤prio}} k₁ l r) k with compare k k₁
     ... | tri< k<k₁ ¬k≡k₁ ¬k₁<k = 
@@ -275,7 +306,7 @@ Next (and last!) on the list is `split`ting a Treap into 2 pieces `l` and `r` ba
       coercePrio L₂ {{≤-trans (validPriority L₂) p≤prio}} , (lookup k T) , coercePrio R₂ {{≤-trans (validPriority R₂) p≤prio}}
 ```
 
-At long last, we can insert (unique) things into our `Treap`!
+At long last, we can insert things into our `Treap`!
 Making good use of our `join` and `split` functions, this is almost trivial, and we also get a proof that our result contains the desired element for free!
 
 ```agda
@@ -286,23 +317,26 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
     open Split Carrier _<_ IsSTO
     open Join Carrier _<_ IsSTO
 
-    insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → ∃[ t' ] x ∈ t' 
-    insert x p {h = h} t x∉t = 
+    insert : (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → ∃[ t' ] x ∈ t' 
+    insert x p {h = h} t = 
       let L , dec , R = split t x in
       join x p L {{h = h}} R
 
     -- removes the proof for situations where it is not needed
-    insert' : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
-    insert' x p {h} t x∉t = proj₁ (insert x p {h = h} t x∉t)
+    insert' : (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → Treap lower prio upper
+    insert' x p {h} t = proj₁ (insert x p {h = h} t)
     
     -- start of a partial proof that insert is correct
-    insertSound : ∀ { lower prio upper k } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ h₁ : lower < x }} → {{ h₂ : x < upper }} → (x∉t : x ∉ t) → k ∈ t → k ∈ (insert' x p {h = h} t {{h₁}} {{h₂}} x∉t)
-    insertSound {k = k} x p {h} t x∉t k∈t with insert x p {h = h} t x∉t 
+    insertSound : (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ h₁ : lower < x }} → {{ h₂ : x < upper }} → k ∈ t → k ∈ (insert' x p {h = h} t {{h₁}} {{h₂}})
+    insertSound {k = k} x p {h} t k∈t with insert x p {h = h} t
     ... | node p₁ k₁ l r , x∈t' with k∈t | compare k k₁ 
     ... | here x₁ | bar = {!   !}
     ... | left foo | bar = {!   !}
     ... | right foo | bar = {!   !}
-``` 
+```
+
+But wait, with these primitives we also get an implementation of `delete` for free!
+We need a few more utilities 
 
 ```agda
   module Delete (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
@@ -311,11 +345,28 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
     open Lookup Carrier _<_ IsSTO
     open Split Carrier _<_ IsSTO
     open Join Carrier _<_ IsSTO
-
-    variable
-      lower upper k : Carrier
-      p prio : ℕ
     
+    delete : (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → Σ[ t' ∈ Treap lower prio upper ] k ∉ t'
+    delete t k = 
+      let 
+        (L , _ , R) = split t k {{it}} {{it}}
+        _ , from = joinPairCorrect {x = k} {t₁ = L} {t₂ = R}
+      in joinPair L R , 
+         contraposition from (λ {(inj₁ k∈L) → lemmaRight L k (inj₂ _≡_.refl) k∈L
+                               ; (inj₂ k∈R) → lemmaLeft R k (inj₂ _≡_.refl) k∈R})
+
+    -- start of a partial proof that insert is correct
+    deleteSound : 
+      (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → 
+      {k' : Carrier} → {h₃ : k' Eq.≢ k} → k' ∈ t → k' ∈ (proj₁ (delete t k))
+    deleteSound t k k'∈t = {!   !}
+```
+
+```agda
+  module Misc (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
+    open IsStrictTotalOrder IsSTO
+    open TreapBase Carrier _<_ IsSTO
+
     minElem : Treap lower prio upper → Carrier × ℕ → Carrier × ℕ
     minElem empty kp = kp
     minElem (node p k l _) _ = minElem l (k , p)
@@ -323,16 +374,6 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
     minKey : Treap lower prio upper → Carrier → Carrier
     minKey empty k = k
     minKey (node _ k l _) _ = minKey l k
-
-    lemmaContains : { t : Treap lower prio upper } → k ∈ t  → lower < k × k < upper
-    lemmaContains {lower = lower} {upper = upper} {t = node p k₁ l r} (here k≡k₁) = 
-      (Eq.subst (lower <_) (sym k≡k₁) (lemmaOrder l)) , Eq.subst (_< upper) (sym k≡k₁) (lemmaOrder r)
-    lemmaContains {t = node p k₁ l r} (left k∈l) = 
-      let lower<k , k<k₁ = lemmaContains k∈l 
-      in lower<k , (trans k<k₁ (lemmaOrder r))
-    lemmaContains {t = node p k₁ l r} (right k∈r) = 
-      let k₁<k , k<upper = lemmaContains k∈r
-      in trans (lemmaOrder l) k₁<k , k<upper
     
     minKeySound : ∀ { x } → (t : Treap lower prio upper) → x ∈ t → (minKey t k < x ⊎ minKey t k ≡ x)
     minKeySound (node p k empty r) (here x≡k) = inj₂ (sym x≡k)
@@ -348,29 +389,4 @@ Making good use of our `join` and `split` functions, this is almost trivial, and
     ... | inj₂ min≡ = 
       let k<x , _ = lemmaContains x∈r
       in inj₁ (Eq.subst (_< x) (sym min≡) (trans (lemmaOrder r₁) k<x))
-
-    {-# TERMINATING #-}
-    joinPair : (t₁ : Treap lower prio k) → (t₂ : Treap k prio upper) → Treap lower prio upper
-    joinPair t₁ empty = coerceUpper {h = it} t₁
-    joinPair empty t₂@(node p k₁ l r) = coerceLower {h = it} t₂
-    joinPair t₁@(node p₁ {{p₁≤prio}} k₁ l₁ r₁) t₂@(node p₂ {{p₂≤prio}} k₂ l₂ r₂) with ≤-total p₁ p₂
-    ... | inj₁ p₁≤p₂ = node p₂ {{p₂≤prio}} k₂ (joinPair (coercePrio t₁ {{p₁≤p₂}}) l₂) r₂
-    ... | inj₂ p₂≤p₁ = node p₁ {{p₁≤prio}} k₁ l₁ (joinPair r₁ (coercePrio t₂ {{p₂≤p₁}}))
-
-    joinPairCorrect : { x : Carrier } → { t₁ : Treap lower prio k } → { t₂ : Treap k prio upper } → (((x ∈ t₁) ⊎ (x ∈ t₂)) → x ∈ (joinPair t₁ t₂)) × (x ∈ (joinPair t₁ t₂) → ((x ∈ t₁) ⊎ (x ∈ t₂)))
-    joinPairCorrect = {!   !} , {!   !}
-    
-    delete : (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → Σ[ t' ∈ Treap lower prio upper ] k ∉ t'
-    delete t k = 
-      let 
-        (L , _ , R) = split t k {{it}} {{it}}
-        _ , from = joinPairCorrect {x = k} {t₁ = L} {t₂ = R}
-      in joinPair L R , 
-         contraposition from (λ {(inj₁ k∈L) → lemmaRight L k (inj₂ _≡_.refl) k∈L
-                               ; (inj₂ k∈R) → lemmaLeft R k (inj₂ _≡_.refl) k∈R})
-
-    deleteSound : 
-      (t : Treap lower prio upper) → (k : Carrier) → {{h₁ : lower < k}} → {{ h₂ : k < upper }} → 
-      {k' : Carrier} → {h₃ : k' Eq.≢ k} → k' ∈ t → k' ∈ (proj₁ (delete t k))
-    deleteSound t k k'∈t = {!   !}
 ```
