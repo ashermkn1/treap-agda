@@ -20,7 +20,8 @@ module Treap where
   open import Data.Empty using (⊥ ; ⊥-elim)
   open import Agda.Builtin.Bool 
   open import Data.Bool.Base using (T)
-
+  open import Function.Base using (_∘_)
+  
   variable A : Set
 
   -- grab the instance value into an actual value
@@ -176,59 +177,109 @@ Now, we can test some lookup proofs on a sample `Treap`:
     -- 0∈treap = invert (proof (lookup 0 {! treap  !}))
 ```
 
+
 ```agda
   module Join (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
     open TreapBase Carrier _<_ IsSTO
+    
 
     priority : ∀ { lower prio upper } → Treap lower prio upper → ℕ
     priority empty = 0
     priority (node p k t t₁) = p
-
-    -- priorityInv : ∀ { lower prio upper } → (t : Treap lower prio upper) → priority t ≤ prio
-    -- priorityInv empty = z≤n
-    -- priorityInv (node p {{p≤prio}} k t t₁) = p≤prio
     
     treapCoerce : ∀ { lower prio upper p } → (t : Treap lower prio upper) → {{priority t ≤ p}} → Treap lower p upper
     treapCoerce empty = empty
     treapCoerce {p = p} (node p₁ k l r) {{p₁≤p}} = node p₁ {{p₁≤p}} k l r
 
     {-# TERMINATING #-}
-    join : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
-    join k p empty {{h}} empty = node p {{h}} k empty empty
+    join : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → ∃[ t' ] k ∈ t'
+    join k p empty {{h}} empty = node p {{h}} k empty empty , here _≡_.refl
     join k p empty {{h}} (node p₁ {{h₁}} k₁ r r₁) with ≤-total p p₁
-    ... | inj₁ p≤p₁ = node p₁ {{h₁}} k₁ (join k p empty {{p≤p₁}} r) r₁
-    ... | inj₂ p₁≤p = node p {{h}} k empty (node p₁ {{p₁≤p}} k₁ r r₁)
+    ... | inj₁ p≤p₁ = 
+      let l , k∈l = join k p empty {{p≤p₁}} r
+      in node p₁ {{h₁}} k₁ l r₁ , left k∈l
+    ... | inj₂ p₁≤p = node p {{h}} k empty (node p₁ {{p₁≤p}} k₁ r r₁) , here _≡_.refl
     join k p (node p₁ {{h₁}} k₁ l l₁) {{h}} empty with ≤-total p p₁
-    ... | inj₁ p≤p₁ = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} empty)
-    ... | inj₂ p₁≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) empty
+    ... | inj₁ p≤p₁ = 
+      let r , k∈r = join k p l₁ {{p≤p₁}} empty
+      in node p₁ {{h₁}} k₁ l r , right k∈r
+    ... | inj₂ p₁≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) empty , here _≡_.refl
     join k p (node p₁ {{h₁}} k₁ l l₁) {{h}} (node p₂ {{h₂}} k₂ r r₁) with ≤-total p p₁ | ≤-total p p₂
-    ... | inj₂ p₁≤p | inj₂ p₂≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) (node p₂ {{p₂≤p}} k₂ r r₁)
-    ... | inj₂ p₁≤p | inj₁ p≤p₂ = node p₂ {{h₂}} k₂ (join k p (node p₁ {{≤-trans p₁≤p p≤p₂}} k₁ l l₁) {{p≤p₂}} r) r₁
-    ... | inj₁ p≤p₁ | inj₂ p₂≤p = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} (node p₂ {{≤-trans p₂≤p p≤p₁}} k₂ r r₁))
+    ... | inj₂ p₁≤p | inj₂ p₂≤p = node p {{h}} k (node p₁ {{p₁≤p}} k₁ l l₁) (node p₂ {{p₂≤p}} k₂ r r₁) , here _≡_.refl
+    ... | inj₂ p₁≤p | inj₁ p≤p₂ = 
+      let l' , k∈l' = join k p (node p₁ {{≤-trans p₁≤p p≤p₂}} k₁ l l₁) {{p≤p₂}} r
+      in node p₂ {{h₂}} k₂ l' r₁ , left k∈l'
+    ... | inj₁ p≤p₁ | inj₂ p₂≤p = 
+      let r' , k∈r' = join k p l₁ {{p≤p₁}} (node p₂ {{≤-trans p₂≤p p≤p₁}} k₂ r r₁) 
+      in node p₁ {{h₁}} k₁ l r' , right k∈r'
     ... | inj₁ p≤p₁ | inj₁ p≤p₂ with ≤-total p₁ p₂
-    ... | inj₁ p₁≤p₂ = node p₂ {{h₂}} k₂ (join k p (node p₁ {{p₁≤p₂}} k₁ l l₁) {{p≤p₂}} r) r₁
-    ... | inj₂ p₂≤p₁ = node p₁ {{h₁}} k₁ l (join k p l₁ {{p≤p₁}} (node p₂ {{p₂≤p₁}} k₂ r r₁))
+    ... | inj₁ p₁≤p₂ = 
+      let l' , k∈l' = join k p (node p₁ {{p₁≤p₂}} k₁ l l₁) {{p≤p₂}} r
+      in node p₂ {{h₂}} k₂ l' r₁ , left k∈l'
+    ... | inj₂ p₂≤p₁ = 
+      let r' , k∈r' = join k p l₁ {{p≤p₁}} (node p₂ {{p₂≤p₁}} k₂ r r₁)
+      in node p₁ {{h₁}} k₁ l r' , right k∈r'
+
+    join' : ∀ { lower prio upper } → (k : Carrier) → (p : ℕ) → Treap lower prio k → {{h : p ≤ prio}} → Treap k prio upper → Treap lower prio upper
+    join' k p l {{h}} r = proj₁ (join k p l {{h = h}} r)
 ```
+
+```agda
+  module Split (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
+    open IsStrictTotalOrder IsSTO
+    open TreapBase Carrier _<_ IsSTO
+    open Lookup Carrier _<_ IsSTO
+    open Join Carrier _<_ IsSTO
+
+    coercePrio : ∀ { lower prio upper prio' } → { h : prio ≤ prio' } → Treap lower prio upper → Treap lower prio' upper
+    coercePrio empty = empty
+    coercePrio {prio' = prio'} {h = h} (node p {{p≤prio}} k l r) = node p {{≤-trans p≤prio h}} k l r
+    
+    coerceUpper : ∀ { lower prio upper upper' } → { h : upper < upper' } → Treap lower prio upper → Treap lower prio upper'
+    coerceUpper {h = h} (empty {{lower<upper}}) = empty {{trans lower<upper h}}
+    coerceUpper {h = h} (node p {{p≤prio}} k l r) = node p {{p≤prio}} k l (coerceUpper {h = h} r)
+    
+    coerceLower : ∀ { lower prio upper lower' } → {h : lower' < lower } → Treap lower prio upper → Treap lower' prio upper
+    coerceLower {h = h} (empty {{lower<upper}}) = empty {{trans h lower<upper}}
+    coerceLower {h = h} (node p {{p≤prio}} k l r ) = node p {{p≤prio}} k (coerceLower {h = h} l) r
+    
+    split : ∀ { lower prio upper } → (t : Treap lower prio upper) → (k : Carrier) → {{ lower < k }} → {{ k < upper }} → Treap lower prio k × Dec (k ∈ t) × Treap k prio upper
+    split empty k = empty , no (λ ()) , empty
+    split {lower = lower} {prio = prio} {upper = upper} T@(node p {{p≤prio}} k₁ l r) k with compare k k₁
+    ... | tri< k<k₁ ¬k≡k₁ ¬k₁<k = 
+      let (L₁ , _ , L₂) = split l k {{it}} {{k<k₁}} 
+      in coercePrio {h = p≤prio} L₁ , lookup k T , coercePrio {h = p≤prio} (join' k₁ p L₂ {{h = ≤-refl}} r)
+    ... | tri≈ ¬k<k₁ k≡k₁ ¬k₁<k = 
+      Eq.subst (λ x → Treap lower prio x) (sym k≡k₁) (coercePrio {h = p≤prio} l) , 
+        (yes (here k≡k₁)) , 
+      Eq.subst (λ x → Treap x prio upper) (sym k≡k₁) (coercePrio {h = p≤prio} r)
+    ... | tri> ¬k<k₁ ¬k≡k₁ k₁<k = 
+      let (R₁ , _ , R₂) = split r k {{k₁<k}} {{it}} 
+      in  coercePrio {h = p≤prio} (join' k₁ p l {{h = ≤-refl}} R₁) , (lookup k T) , coercePrio {h = p≤prio} R₂
+```
+
 ```agda
   module Insert (Carrier : Set) (_<_ : Carrier → Carrier → Set) (IsSTO : IsStrictTotalOrder _≡_ _<_) where
     open IsStrictTotalOrder IsSTO
     open TreapBase Carrier _<_ IsSTO
+    open Lookup Carrier _<_ IsSTO
+    open Split Carrier _<_ IsSTO
+    open Join Carrier _<_ IsSTO
 
-    -- treapPrio : ∀ { lower prio upper } → (t : Treap lower prio upper) → ℕ
-    -- treapPrio empty = 0
-    -- treapPrio (node p _ _ _) = p
+    insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → ∃[ t' ] x ∈ t' 
+    insert x p {h = h} t x∉t = 
+      let 
+        (L , dec , R) = split t x
+      in join x p L {{h = h}} R
 
-    -- treapCoerce : ∀ { lower prio upper } → (t : Treap lower prio upper) → Treap lower (treapPrio t) upper
-    -- treapCoerce empty = empty
-    -- treapCoerce (node p k l r) = node p {{≤-refl}} k l r
-
-    insert : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
-    insert x p {h} empty _ = node p {{h}} x empty empty
-    insert x p (node p₁ k l r) x∉t with compare x k
-    insert x p (node p₁ k l r) x∉t | tri≈ ¬x<k x≡k ¬k<x = ⊥-elim (x∉t (here x≡k))
-    ... | tri< x<k ¬x≡k ¬k<x with p <ᵇ p₁
-    ... | false = {!   !}
-    ... | true = {!   !}
-    insert x p (node p₁ k l r) x∉t | tri> ¬x<k ¬x≡k k<x = {!   !}
+    insert' : ∀ { lower prio upper } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ lower < x }} → {{ x < upper }} → x ∉ t → Treap lower prio upper
+    insert' x p {h} t x∉t = proj₁ (insert x p {h = h} t x∉t)
+    
+    insertSound : ∀ { lower prio upper k } → (x : Carrier) → (p : ℕ) → { h : p ≤ prio }  → (t : Treap lower prio upper) → {{ h₁ : lower < x }} → {{ h₂ : x < upper }} → (x∉t : x ∉ t) → k ∈ t → k ∈ (insert' x p {h = h} t {{h₁}} {{h₂}} x∉t)
+    insertSound {k = k} x p {h} t x∉t k∈t with insert x p {h = h} t x∉t 
+    ... | node p₁ k₁ l r , x∈t' with k∈t | compare k k₁ 
+    ... | here x₁ | bar = {!   !}
+    ... | left foo | bar = {!   !}
+    ... | right foo | bar = {!   !}
 ``` 
